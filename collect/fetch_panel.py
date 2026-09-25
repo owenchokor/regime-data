@@ -1,10 +1,9 @@
 """
-전 종목 일별 횡단면 패널 (날짜×시장 1콜) — 체크포인트/재개 지원
+전 종목 일별 횡단면 패널 (날짜×시장 1콜) — 체크포인트/재개 + 진행 패널
 소스: stock.get_market_cap_by_ticker(date, market)
-결과: data/panel_{close,mcap,volume,shares}.parquet (날짜×티커, 미수정), data/panel_log.txt
-
-재개: release의 기존 panel_close.parquet가 있으면 그 마지막 날짜 이후부터 수집.
-체크포인트: CKPT_MIN 분마다 부분 결과를 release에 업로드 → 타임아웃으로 죽어도 진행분 보존.
+결과: data/panel_{close,mcap,volume,shares}.parquet (날짜×티커, 미수정)
+진행 패널: PROGRESS.md 를 main에 커밋 (PROG_MIN분마다) → 리포에서 실시간 확인
+체크포인트: CKPT_MIN분마다 부분 parquet 를 release에 업로드 → 타임아웃해도 보존
 """
 import os, subprocess, time, traceback
 from pathlib import Path
@@ -12,7 +11,9 @@ import pandas as pd
 from pykrx import stock
 
 OUT = Path("data"); OUT.mkdir(exist_ok=True)
-CKPT_MIN = float(os.environ.get("CKPT_MIN", 20))
+CKPT_MIN = float(os.environ.get("CKPT_MIN", 15))
+PROG_MIN = float(os.environ.get("PROG_MIN", 5))
+RUN_URL  = os.environ.get("RUN_URL", "")
 COLS = {"종가": "close", "시가총액": "mcap", "거래량": "volume", "상장주식수": "shares"}
 LOG = open(OUT / "panel_log.txt", "a")
 
@@ -20,31 +21,64 @@ def log(*a):
     m = f"[{time.strftime('%H:%M:%S')}] " + " ".join(map(str, a))
     print(m, flush=True); LOG.write(m + "\n"); LOG.flush()
 
-def save(buf: dict) -> None:
-    for v, dd in buf.items():
-        if dd:
-            pd.DataFrame(dd).T.sort_index().astype("float32").to_parquet(OUT / f"panel_{v}.parquet")
+def sh(*c, **k):
+    return subprocess.run(c, capture_output=True, text=True, **k)
 
-def upload() -> None:
-    f = [str(p) for p in OUT.glob("panel_*")]
-    r = subprocess.run(["gh", "release", "upload", "data-latest", *f, "--clobber"],
-                       capture_output=True, text=True)
-    log("upload rc=", r.returncode, r.stderr.strip()[-200:])
+def save(buf):
+    for v, dd in buf.items():
+        if dd: pd.DataFrame(dd).T.sort_index().astype("float32").to_parquet(OUT / f"panel_{v}.parquet")
+
+def upload():
+    r = sh("gh", "release", "upload", "data-latest", *[str(p) for p in OUT.glob("panel_*")], "--clobber")
+    log("ckpt upload rc=", r.returncode, r.stderr.strip()[-150:])
+
+def write_progress(i, n, done_prev, rate, last_date, empty, state="RUNNING"):
+    pct = (i + done_prev) / (n + done_prev) * 100
+    bar = "█" * int(pct / 4) + "░" * (25 - int(pct / 4))
+    eta = (n - i) * rate / 60
+    md = f"""# build-panel 진행 상황
+
+`{state}` · 갱신 {time.strftime('%Y-%m-%d %H:%M:%S')} UTC
+
+```
+{bar} {pct:5.1f}%
+```
+
+| 항목 | 값 |
+|---|---|
+| 수집 완료 | {i + done_prev:,} / {n + done_prev:,} 거래일 |
+| 이번 실행 | {i:,} 일 (이어받기 {done_prev:,} 일) |
+| 속도 | {rate:.2f} 초/일 |
+| 남은 예상 | **{eta:.0f} 분** |
+| 마지막 처리 | {last_date} |
+| 빈 응답 | {len(empty)} 일 |
+| 잡 타임아웃 | 340분 |
+
+{"[실행 로그](" + RUN_URL + ")" if RUN_URL else ""}
+
+<sub>PROG_MIN={PROG_MIN}분마다 자동 갱신. 부분 데이터는 {CKPT_MIN}분마다 release `data-latest`에 저장됨.</sub>
+"""
+    Path("PROGRESS.md").write_text(md)
+    for _ in range(3):  # 왜: 동시 커밋 충돌 대비 rebase 재시도
+        sh("git", "add", "PROGRESS.md")
+        sh("git", "commit", "-m", f"progress: {pct:.1f}% ({i + done_prev}/{n + done_prev})")
+        sh("git", "pull", "--rebase", "-q")
+        if sh("git", "push", "-q").returncode == 0: return
+        time.sleep(2)
+    log("progress push 실패")
 
 days = pd.read_parquet(OUT / "kospi.parquet").index
-buf = {v: {} for v in COLS.values()}
-prev = OUT / "panel_close.parquet"
-if prev.exists():  # 왜: 타임아웃 재개 — 이미 받은 날짜는 건너뜀
+buf = {v: {} for v in COLS.values()}; done_prev = 0
+if (OUT / "panel_close.parquet").exists():
     for v in COLS.values():
         p = OUT / f"panel_{v}.parquet"
         if p.exists():
-            df = pd.read_parquet(p)
-            buf[v] = {d: df.loc[d].dropna() for d in df.index}
-    done = set(pd.read_parquet(prev).index)
-    days = days[~days.isin(done)]
-    log("resume: 기존", len(done), "일 / 남은", len(days), "일")
+            df = pd.read_parquet(p); buf[v] = {d: df.loc[d].dropna() for d in df.index}
+    done = set(pd.read_parquet(OUT / "panel_close.parquet").index)
+    days = days[~days.isin(done)]; done_prev = len(done)
+    log("resume: 기존", done_prev, "일 / 남은", len(days), "일")
 
-def call(ds: str, mkt: str) -> pd.DataFrame:
+def call(ds, mkt):
     for _ in range(3):
         try:
             df = stock.get_market_cap_by_ticker(ds, market=mkt)
@@ -54,23 +88,28 @@ def call(ds: str, mkt: str) -> pd.DataFrame:
         time.sleep(3)
     return pd.DataFrame()
 
-t0 = last = time.time(); empty = []
-for i, dt in enumerate(days):
-    ds = dt.strftime("%Y%m%d")
-    parts = [p for p in (call(ds, m) for m in ("KOSPI", "KOSDAQ")) if not p.empty]
-    if len(parts) < 2:
-        empty.append(ds); log("EMPTY", ds, len(parts))
-        if i == 4 and len(empty) == 5:
-            raise RuntimeError("초반 5일 연속 빈 응답 — 인증/함수 확인")
-        if not parts: continue
-    df = pd.concat(parts); df = df[~df.index.duplicated()]
-    if i == 0: log("columns:", df.columns.tolist(), "n:", len(df))
-    for k, v in COLS.items(): buf[v][dt] = df[k]
-    if i % 50 == 0:
-        rate = (time.time() - t0) / (i + 1)
-        log(f"{i}/{len(days)} {ds} n={len(df)} {rate:.2f}s/일 ETA {rate*(len(days)-i)/60:.0f}분")
-    if time.time() - last > CKPT_MIN * 60:
-        save(buf); upload(); last = time.time(); log("ckpt", i)
-
-save(buf); upload()
-log("DONE empty:", len(empty), empty[:20], "elapsed", round((time.time() - t0) / 60, 1), "분")
+n = len(days); t0 = time.time(); last_c = last_p = t0; empty = []
+write_progress(0, n, done_prev, 0.0, "-", empty, "START")
+try:
+    for i, dt in enumerate(days):
+        ds = dt.strftime("%Y%m%d")
+        parts = [p for p in (call(ds, m) for m in ("KOSPI", "KOSDAQ")) if not p.empty]
+        if len(parts) < 2:
+            empty.append(ds); log("EMPTY", ds, len(parts))
+            if i == 4 and len(empty) == 5: raise RuntimeError("초반 5일 연속 빈 응답 — 인증/함수 확인")
+            if not parts: continue
+        df = pd.concat(parts); df = df[~df.index.duplicated()]
+        if i == 0: log("columns:", df.columns.tolist(), "n:", len(df))
+        for k, v in COLS.items(): buf[v][dt] = df[k]
+        now = time.time(); rate = (now - t0) / (i + 1)
+        if i % 50 == 0: log(f"{i}/{n} {ds} n={len(df)} {rate:.2f}s/일 ETA {rate*(n-i)/60:.0f}분")
+        if now - last_p > PROG_MIN * 60:
+            write_progress(i + 1, n, done_prev, rate, ds, empty); last_p = now
+        if now - last_c > CKPT_MIN * 60:
+            save(buf); upload(); last_c = now; log("ckpt", i)
+finally:
+    save(buf); upload()
+    r = (time.time() - t0) / max(len(buf["close"]) - done_prev, 1)
+    write_progress(len(buf["close"]) - done_prev, n, done_prev, r,
+                   str(max(buf["close"])) if buf["close"] else "-", empty, "DONE")
+log("DONE empty:", len(empty), empty[:20], "elapsed", round((time.time()-t0)/60, 1), "분")
