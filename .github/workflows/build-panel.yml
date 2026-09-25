@@ -35,6 +35,8 @@ jobs:
           KRX_ID: ${{ secrets.KRX_ID }}
           KRX_PW: ${{ secrets.KRX_PW }}
           CKPT_MIN: "15"
+          SLEEP: "1.0"
+          COOLDOWN: "300"
           PROG_MIN: "5"
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: python collect/fetch_panel.py
