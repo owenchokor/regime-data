@@ -1,29 +1,37 @@
 name: build-panel
 on:
   workflow_dispatch:
+    inputs:
+      resume:
+        description: "기존 panel_*.parquet 이어받기"
+        type: boolean
+        default: true
 jobs:
   panel:
     runs-on: ubuntu-latest
-    timeout-minutes: 350
+    timeout-minutes: 340
     permissions:
       contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+        with: { python-version: "3.11" }
       - run: pip install -r requirements.txt
-      - name: Get trading days
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: mkdir -p data && gh release download data-latest -p kospi.parquet -D data
+      - name: Get trading days (+ resume state)
+        run: |
+          mkdir -p data
+          gh release download data-latest -p kospi.parquet -D data --clobber
+          if [ "${{ inputs.resume }}" = "true" ]; then
+            gh release download data-latest -p 'panel_*' -D data --clobber || echo "no prior panel"
+          fi
       - name: Fetch panel
         env:
           KRX_ID: ${{ secrets.KRX_ID }}
           KRX_PW: ${{ secrets.KRX_PW }}
+          CKPT_MIN: "20"
         run: python collect/fetch_panel.py
-      - name: Upload
+      - name: Upload (always)
         if: always()
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload data-latest data/panel_* --clobber
+        run: gh release upload data-latest data/panel_* --clobber || true
