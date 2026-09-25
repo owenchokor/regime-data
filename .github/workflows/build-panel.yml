@@ -1,0 +1,28 @@
+name: build-panel
+on:
+  workflow_dispatch:
+jobs:
+  panel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - name: Get trading days
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: mkdir -p data && gh release download data-latest -p kospi.parquet -D data
+      - name: Fetch panel
+        env:
+          KRX_ID: ${{ secrets.KRX_ID }}
+          KRX_PW: ${{ secrets.KRX_PW }}
+        run: python collect/fetch_panel.py
+      - name: Upload
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload data-latest data/panel_*.parquet --clobber
