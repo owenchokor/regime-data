@@ -1,6 +1,6 @@
 # build-panel 진행 상황
 
-`START` · 갱신 2026-09-25 14:03:13 UTC
+`START` · 갱신 2026-09-25 14:33:36 UTC
 
 ```
 ░░░░░░░░░░░░░░░░░░░░░░░░░   0.0%
@@ -13,9 +13,10 @@
 | 속도 | 0.00 초/일 |
 | 남은 예상 | **0 분** |
 | 마지막 처리 | - |
+| 호출 간격 | 1.0 초 (벽 0회) |
 | 빈 응답 | 0 일 |
 | 잡 타임아웃 | 340분 |
 
-[실행 로그](https://github.com/owenchokor/regime-data/actions/runs/36144866306)
+[실행 로그](https://github.com/owenchokor/regime-data/actions/runs/36148227109)
 
-<sub>PROG_MIN=5.0분마다 자동 갱신. 부분 데이터는 15.0분마다 release `data-latest`에 저장됨.</sub>
+<sub>5.0분마다 자동 갱신 · 부분 데이터는 15.0분마다 release `data-latest` 저장</sub>
