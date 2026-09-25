@@ -23,6 +23,7 @@ jobs:
           KRX_PW: ${{ secrets.KRX_PW }}
         run: python collect/fetch_panel.py
       - name: Upload
+        if: always()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload data-latest data/panel_*.parquet --clobber
+        run: gh release upload data-latest data/panel_* --clobber
