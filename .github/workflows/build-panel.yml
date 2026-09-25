@@ -19,6 +19,10 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
       - run: pip install -r requirements.txt
+      - name: Git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
       - name: Get trading days (+ resume state)
         run: |
           mkdir -p data
@@ -30,7 +34,9 @@ jobs:
         env:
           KRX_ID: ${{ secrets.KRX_ID }}
           KRX_PW: ${{ secrets.KRX_PW }}
-          CKPT_MIN: "20"
+          CKPT_MIN: "15"
+          PROG_MIN: "5"
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: python collect/fetch_panel.py
       - name: Upload (always)
         if: always()
