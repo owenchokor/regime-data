@@ -1,0 +1,55 @@
+name: watchdog
+on:
+  schedule:
+    - cron: "17 * * * *"      # 매시 17분 (UTC). 스케줄은 지연될 수 있음
+  workflow_dispatch:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install pandas pyarrow -q
+
+      - name: 실행 중이면 종료
+        id: busy
+        run: |
+          N=$(gh run list --workflow build-panel.yml --status in_progress --json databaseId -q 'length')
+          Q=$(gh run list --workflow build-panel.yml --status queued --json databaseId -q 'length')
+          echo "in_progress=$N queued=$Q"
+          echo "busy=$(( N + Q ))" >> $GITHUB_OUTPUT
+
+      - name: 완료 여부 확인
+        if: steps.busy.outputs.busy == '0'
+        id: done
+        run: |
+          mkdir -p data
+          gh release download data-latest -p kospi.parquet -D data --clobber
+          gh release download data-latest -p 'panel_*' -D data --clobber || true
+          python - <<'EOF' >> $GITHUB_OUTPUT
+          from pathlib import Path
+          import pandas as pd
+          need = len(pd.read_parquet("data/kospi.parquet").index)
+          p = Path("data/panel_close.parquet")
+          have = len(pd.read_parquet(p).index) if p.exists() else 0
+          print(f"have={have}"); print(f"need={need}")
+          print(f"complete={'true' if have >= need else 'false'}")
+          EOF
+          cat $GITHUB_OUTPUT
+
+      - name: 미완료면 재시작 (resume)
+        if: steps.busy.outputs.busy == '0' && steps.done.outputs.complete == 'false'
+        run: |
+          echo "재시작: ${{ steps.done.outputs.have }}/${{ steps.done.outputs.need }}"
+          gh workflow run build-panel.yml -f resume=true
+
+      - name: 요약
+        if: always()
+        run: |
+          echo "busy=${{ steps.busy.outputs.busy }} have=${{ steps.done.outputs.have }} need=${{ steps.done.outputs.need }} complete=${{ steps.done.outputs.complete }}" >> $GITHUB_STEP_SUMMARY
