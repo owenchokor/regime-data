@@ -56,7 +56,8 @@ def tick(stage):
     if time.time() - last_save > 600: save(); last_save = time.time()
     if time.time() - last_prog > 300: progress(stage); last_prog = time.time()
     if (time.time() - T0) / 60 > BUDGET_MIN:
-        save(); progress(stage, "예산 소진 — 재실행하면 이어받음"); raise SystemExit(0)
+        (OUT / "dart_continue").write_text("1")   # 왜: 워크플로가 이 표식을 보고 다음 실행을 자동 호출
+        save(); progress(stage, "예산 소진 — 자동 재실행으로 이어받음"); raise SystemExit(0)
 
 progress("START")
 # 1) 주요사항보고서 목록: 3개월 창 × 페이지

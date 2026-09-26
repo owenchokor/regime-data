@@ -11,6 +11,7 @@ jobs:
     timeout-minutes: 110
     permissions:
       contents: write
+      actions: write
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
@@ -35,3 +36,7 @@ jobs:
       - name: Upload (always)
         if: always()
         run: gh release upload data-latest data/dart_* --clobber || true
+      - name: Chain next run (budget exhausted)
+        if: always()
+        run: |
+          if [ -f data/dart_continue ]; then gh workflow run fetch-dart.yml --ref dart && echo "next run dispatched"; fi
