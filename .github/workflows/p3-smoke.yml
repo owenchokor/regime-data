@@ -1,0 +1,44 @@
+name: p3-smoke
+# 왜: 구독 토큰(CLAUDE_CODE_OAUTH_TOKEN)이 Actions에서 실제로 인증되는지 1회 확인
+# 왜 push 트리거: workflow_dispatch는 수동 실행 UI 의존, 이 파일 push만으로 재실행 가능하게
+on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/p3-smoke.yml"]
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TG_CHAT: "-5364261318"   # STASH SIGNALS
+    steps:
+      - uses: actions/checkout@v4
+      - name: Telegram 시작 알림
+        run: |
+          curl -s -o /dev/null -w "%{http_code}\n" "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+            --data-urlencode chat_id="$TG_CHAT" --data-urlencode text="🧪 p3-smoke: Claude 토큰 인증 테스트 시작"
+      - name: Claude
+        id: claude
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: |
+            smoke_out.txt 파일을 만들고 첫 줄에 "OK", 둘째 줄에 KOSPI가 무엇인지 한국어 한 문장으로 적어라. 다른 작업은 하지 마라.
+          claude_args: "--allowedTools Write --max-turns 3"
+      - name: Telegram 결과
+        if: success()
+        run: |
+          test -s smoke_out.txt || { echo "출력 파일 없음"; exit 1; }
+          curl -s -o /dev/null -w "%{http_code}\n" "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+            --data-urlencode chat_id="$TG_CHAT" --data-urlencode text="✅ p3-smoke 성공
+          $(cat smoke_out.txt)"
+      - name: Telegram 폴백
+        if: failure()
+        run: |
+          curl -s -o /dev/null "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+            --data-urlencode chat_id="$TG_CHAT" --data-urlencode text="❌ p3-smoke 실패 — Actions 로그 확인 (토큰 인증 or 텔레그램)"
