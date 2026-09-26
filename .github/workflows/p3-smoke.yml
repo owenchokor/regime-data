@@ -1,5 +1,5 @@
 name: p3-smoke
-# 왜: 구독 토큰(CLAUDE_CODE_OAUTH_TOKEN)이 Actions에서 실제로 인증되는지 1회 확인
+# 왜: 구독 토큰(CLAUDE_CODE_OAUTH_TOKEN) 인증 + 텔레그램 게시를 1회 확인
 # 왜 dispatch: claude-code-action은 push 이벤트 미지원(Unsupported event type: push)
 on:
   workflow_dispatch:
@@ -12,15 +12,19 @@ jobs:
       id-token: write
     env:
       TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-      TG_CHAT: "-5364261318"   # STASH SIGNALS
+      TG_CHAT: ${{ secrets.CHAT_ID }}
     steps:
       - uses: actions/checkout@v4
-      - name: Telegram 시작 알림
+      - name: Telegram 사전점검
+        # 왜: 이전 실행은 curl -s가 HTTP 오류를 삼켜 전송 실패가 성공으로 보였음 → 응답 ok 필드로 판정
         run: |
-          curl -s -o /dev/null -w "%{http_code}\n" "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
-            --data-urlencode chat_id="$TG_CHAT" --data-urlencode text="🧪 p3-smoke: Claude 토큰 인증 테스트 시작"
+          test -n "$TG_TOKEN" || { echo "TELEGRAM_BOT_TOKEN 비어있음(Secret 이름 확인)"; exit 1; }
+          test -n "$TG_CHAT"  || { echo "CHAT_ID 비어있음(Secret 이름 확인)"; exit 1; }
+          echo "getMe:";   curl -s "https://api.telegram.org/bot${TG_TOKEN}/getMe" | python3 -c "import json,sys;d=json.load(sys.stdin);print(d.get('ok'),d.get('description'),d.get('result',{}).get('username'))"
+          echo "getChat:"; curl -s "https://api.telegram.org/bot${TG_TOKEN}/getChat" --data-urlencode chat_id="$TG_CHAT" | python3 -c "import json,sys;d=json.load(sys.stdin);print(d.get('ok'),d.get('description'),d.get('result',{}).get('title'),d.get('parameters'))"
+          r=$(curl -s "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" --data-urlencode chat_id="$TG_CHAT" --data-urlencode text="🧪 p3-smoke: 텔레그램·Claude 토큰 테스트 시작")
+          echo "$r" | python3 -c "import json,sys;d=json.load(sys.stdin);print('send:',d.get('ok'),d.get('description'),d.get('parameters'));sys.exit(0 if d.get('ok') else 1)"
       - name: Claude
-        id: claude
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -29,14 +33,14 @@ jobs:
             smoke_out.txt 파일을 만들고 첫 줄에 "OK", 둘째 줄에 KOSPI가 무엇인지 한국어 한 문장으로 적어라. 다른 작업은 하지 마라.
           claude_args: "--allowedTools Write --max-turns 3"
       - name: Telegram 결과
-        if: success()
         run: |
           test -s smoke_out.txt || { echo "출력 파일 없음"; exit 1; }
-          curl -s -o /dev/null -w "%{http_code}\n" "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
-            --data-urlencode chat_id="$TG_CHAT" --data-urlencode text="✅ p3-smoke 성공
-          $(cat smoke_out.txt)"
+          r=$(curl -s "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" --data-urlencode chat_id="$TG_CHAT" \
+            --data-urlencode text="✅ p3-smoke 성공
+          $(cat smoke_out.txt)")
+          echo "$r" | python3 -c "import json,sys;d=json.load(sys.stdin);print('send:',d.get('ok'),d.get('description'));sys.exit(0 if d.get('ok') else 1)"
       - name: Telegram 폴백
         if: failure()
         run: |
           curl -s -o /dev/null "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
-            --data-urlencode chat_id="$TG_CHAT" --data-urlencode text="❌ p3-smoke 실패 — Actions 로그 확인 (토큰 인증 or 텔레그램)"
+            --data-urlencode chat_id="$TG_CHAT" --data-urlencode text="❌ p3-smoke 실패 — Actions 로그 확인"
