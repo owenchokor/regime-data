@@ -53,13 +53,12 @@ def simulate(book: list[dict], ra: pd.DataFrame, kospi: pd.Series, rf_m: pd.Seri
                 tgt = set()                          # 왜: 위험 구간에 재진입하면 다음날 바로 청산되는 왕복 비용만 발생
             for t in [t for t in pos if t not in tgt]:
                 cash += pos.pop(t)[0] * (1 - COST_BP / 1e4)
-            new = [t for t in tgt if t not in pos]
+            new = sorted(t for t in tgt if t not in pos)
             total = cash + sum(v[0] for v in pos.values())
             per = total / len(tgt) if tgt else 0.0
-            for t in new:                           # 신규만 매수(계속 보유분은 무거래) — 현금 한도 내
-                amt = min(per, cash)
-                if amt <= 0:
-                    break
+            # 왜 균등 상한: 계속 보유분이 목표비중을 넘으면 현금이 모자람 → 신규끼리 균등 배분(순서 의존·해시 순서 비결정성 제거)
+            amt = min(per, cash / len(new)) if new else 0.0
+            for t in new:                           # 신규만 매수(계속 보유분은 무거래)
                 cash -= amt
                 pos[t] = [amt * (1 - COST_BP / 1e4)] * 2
             for t in pos:                            # 왜: 트레일링 기준은 이번 보유 구간의 고점부터
@@ -67,7 +66,7 @@ def simulate(book: list[dict], ra: pd.DataFrame, kospi: pd.Series, rf_m: pd.Seri
         else:                                       # 4) 청산 트리거 판정(당일 종가 기준 → 다음날 매도)
             if "stop" in rule:
                 for t, (v, pk) in pos.items():
-                    if v / pk - 1 <= -rule["stop"]:
+                    if v / pk - 1 <= -rule["stop"] + 1e-9:   # 왜 허용오차: 호가단위로 정확히 −10%인 날이 부동소수 순서에 따라 뒤집힘
                         pending_sell.add(t); log.append(dict(date=d, ticker=t, why=f"트레일링 {rule['stop']:.0%}"))
             if risk is not None and bool(risk.get(d, False)) and pos:
                 pending_sell |= set(pos); log.append(dict(date=d, ticker="ALL", why=f"KOSPI<{rule['ma']}일선"))
