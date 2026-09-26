@@ -1,10 +1,8 @@
 name: p3-smoke
 # 왜: 구독 토큰(CLAUDE_CODE_OAUTH_TOKEN)이 Actions에서 실제로 인증되는지 1회 확인
-# 왜 push 트리거: workflow_dispatch는 수동 실행 UI 의존, 이 파일 push만으로 재실행 가능하게
+# 왜 dispatch: claude-code-action은 push 이벤트 미지원(Unsupported event type: push)
 on:
-  push:
-    branches: [main]
-    paths: [".github/workflows/p3-smoke.yml"]
+  workflow_dispatch:
 jobs:
   smoke:
     runs-on: ubuntu-latest
