@@ -28,6 +28,6 @@ sc.to_csv(IN / f"{D}_scores.csv", index=False)
 L = [f"📊 {D} ③v2 결과 (기준 {SCORE_TH}점, 최대 {MAX_PICK}개)"]
 L += [f"✅ {r.name} {r.score:.0f}점 — {r.reason}" for r in pick.itertuples()] or ["선정 0개 → 전액 현금"]
 L += ["", "미선정 상위: " + ", ".join(f"{r.name} {r.score:.0f}" for r in sc[sc.selected == 0].head(5).itertuples()),
-      "전문: 리포 " + str(IN / f"{D}_debate.md")]
+      f"토론 전문: https://github.com/owenchokor/regime-data/blob/main/{IN}/{D}_debate.md"]
 (IN / f"{D}_telegram.txt").write_text("\n".join(L))
 print("\n".join(L))

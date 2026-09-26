@@ -27,13 +27,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { ref: main }   # 왜: 호출 시점 SHA에는 방금 커밋된 decisions CSV가 없음
+      - run: pip install -q pandas requests
       - name: 입력 확인·시작 알림
         run: |
           test -s "$IN/$D.csv" || { echo "입력 없음 $IN/$D.csv"; exit 1; }
           mkdir -p "$IN/work"
           curl -s -o /dev/null "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" --data-urlencode chat_id="$TG_CHAT" \
             --data-urlencode text="🗣 ${D} ③v2 에이전트 토론 진행중... ($(($(wc -l < "$IN/$D.csv") - 1))종목)"
+      - name: 사용자 리포트 내려받기 (러너 전용, 커밋 안 함)
+        run: python3 phase3/inbox.py fetch "$D"
       - name: G 성장·기대치
+        id: g
         uses: anthropics/claude-code-action@v1
         timeout-minutes: 50
         with:
@@ -42,6 +46,7 @@ jobs:
           prompt: "phase3/debate_prompt.md 를 읽고 1단계를 AXIS=G 로 수행하라. D=${{ inputs.month }}, IN=${{ inputs.in_dir }}, OUT=${{ inputs.in_dir }}"
           claude_args: ${{ env.TOOLS }}
       - name: V 가치·재무·딜
+        id: v
         uses: anthropics/claude-code-action@v1
         timeout-minutes: 50
         with:
@@ -50,6 +55,7 @@ jobs:
           prompt: "phase3/debate_prompt.md 를 읽고 1단계를 AXIS=V 로 수행하라. D=${{ inputs.month }}, IN=${{ inputs.in_dir }}, OUT=${{ inputs.in_dir }}"
           claude_args: ${{ env.TOOLS }}
       - name: M 시장·모멘텀·거시
+        id: m
         uses: anthropics/claude-code-action@v1
         timeout-minutes: 50
         with:
@@ -58,6 +64,7 @@ jobs:
           prompt: "phase3/debate_prompt.md 를 읽고 1단계를 AXIS=M 으로 수행하라. D=${{ inputs.month }}, IN=${{ inputs.in_dir }}, OUT=${{ inputs.in_dir }}"
           claude_args: ${{ env.TOOLS }}
       - name: 반박·종합
+        id: s
         uses: anthropics/claude-code-action@v1
         timeout-minutes: 50
         with:
@@ -65,12 +72,18 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           prompt: "phase3/debate_prompt.md 를 읽고 2단계(SYNTH)를 수행하라. D=${{ inputs.month }}, IN=${{ inputs.in_dir }}, OUT=${{ inputs.in_dir }}"
           claude_args: "--allowedTools Read,Write,Glob,Grep --max-turns 60"
+      - name: 사용량 기록
+        # 왜: 구독 사용량은 API로 조회 불가 → 세션별 소요시간·턴·토큰·API환산비용을 남겨 규모 추정
+        if: always()
+        env:
+          F_G: ${{ steps.g.outputs.execution_file }}
+          F_V: ${{ steps.v.outputs.execution_file }}
+          F_M: ${{ steps.m.outputs.execution_file }}
+          F_S: ${{ steps.s.outputs.execution_file }}
+        run: python3 phase3/metrics.py "$IN/work/${D}_metrics.json"
       - name: 결과 검증·선정
         id: pick
-        # 왜 pip: 러너 기본 python에 pandas 없음(1·2차 테스트 실패 원인)
-        run: |
-          pip install -q pandas
-          python3 phase3/finalize.py "$IN" "$D"
+        run: python3 phase3/finalize.py "$IN" "$D"
       - name: 커밋
         if: always()   # 왜: 실패해도 축별 의견·토론 전문을 남겨 원인 확인·수기 채점에 사용
         run: |
