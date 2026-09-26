@@ -1,0 +1,43 @@
+name: forward
+# 왜 main 필요: schedule 트리거는 default 브랜치에서만 동작
+on:
+  schedule:
+    - cron: "0 10 * * 1-5"   # UTC 10:00 = KST 19:00 (장 마감 후 KRX 반영 대기)
+  workflow_dispatch:
+concurrency: { group: forward, cancel-in-progress: false }
+jobs:
+  fwd:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      KRX_ID: ${{ secrets.KRX_ID }}
+      KRX_PW: ${{ secrets.KRX_PW }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install -r requirements.txt tabulate
+      - name: Git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: Download state
+        run: |
+          mkdir -p data
+          gh release download data-latest -D data --clobber -p 'panel_close.parquet' -p 'panel_shares.parquet' -p 'panel_volume.parquet' -p 'panel_mcap.parquet' -p 'ecos_721Y001.parquet'
+      - name: Index (KRX)
+        run: python collect/fetch_index.py
+      - name: Panel increment (KRX)
+        env: { CKPT_MIN: "30", SLEEP: "1.0", COOLDOWN: "300", PROG_MIN: "60" }
+        run: python collect/fetch_panel.py
+      - name: Forward
+        run: python forward/run_forward.py
+      - name: Commit & upload
+        run: |
+          gh release upload data-latest data/kospi.parquet data/kosdaq.parquet --clobber
+          git add forward/
+          git commit -m "forward: $(date -u +%F)" || echo "no change"
+          git pull --rebase -q && git push -q

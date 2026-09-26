@@ -1,0 +1,41 @@
+name: build-amount
+on:
+  workflow_dispatch:
+  push:
+    branches: [extra-data]
+    paths: [collect/fetch_amount.py, .github/workflows/build-amount.yml]
+jobs:
+  amount:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install -r requirements.txt
+      - name: Git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: Trading days + resume
+        run: |
+          mkdir -p data
+          gh release download data-latest -p kospi.parquet -D data --clobber
+          gh release download data-latest -p 'panel_amount*' -D data --clobber || echo "no prior amount"
+      - name: Fetch amount panel
+        env:
+          KRX_ID: ${{ secrets.KRX_ID }}
+          KRX_PW: ${{ secrets.KRX_PW }}
+          CKPT_MIN: "15"
+          SLEEP: "1.0"
+          COOLDOWN: "300"
+          PROG_MIN: "10"
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: python collect/fetch_amount.py
+      - name: Upload (always)
+        if: always()
+        run: gh release upload data-latest data/panel_amount* --clobber || true
