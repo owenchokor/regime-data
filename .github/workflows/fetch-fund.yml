@@ -1,0 +1,30 @@
+name: fetch-fund
+on:
+  workflow_dispatch:
+  push:
+    branches: [dart]
+    paths: [collect/fetch_fund.py, .github/workflows/fetch-fund.yml]
+jobs:
+  fund:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install -r requirements.txt
+      - run: |
+          mkdir -p data
+          gh release download data-latest -p kospi.parquet -D data --clobber
+      - name: Fetch
+        env:
+          KRX_ID: ${{ secrets.KRX_ID }}
+          KRX_PW: ${{ secrets.KRX_PW }}
+        run: python collect/fetch_fund.py
+      - name: Upload
+        if: always()
+        run: gh release upload data-latest data/fund_monthly.parquet --clobber || true
