@@ -1,17 +1,17 @@
 # fetch-dart 진행
 
-갱신 2026-09-26 12:34:37 UTC · 단계 `events` · 경과 67분 / 예산 95분
+갱신 2026-09-26 12:40:37 UTC · 단계 `events` · 경과 73분 / 예산 95분
 
 | 항목 | 값 |
 |---|---|
-| 완료 작업 | 41 |
-| 누적 호출 | 947 |
-| 평균 응답 | 11.07초 |
-| status 분포 | {'000': 837, 'EXC': 110} |
+| 완료 작업 | 42 |
+| 누적 호출 | 972 |
+| 평균 응답 | 11.12초 |
+| status 분포 | {'000': 859, 'EXC': 113} |
 | 미완(재시도 대기) | 0 |
 | 포기(3회 실패) | [] |
 | 최근 EXC | ["HTTPSConnectionPool(host='opendart.fss.or.kr', port=443): Read timed out. (read timeout=60.0)", "HTTPSConnectionPool(host='opendart.fss.or.kr', port=443): Read timed out. (read timeout=60.0)", "HTTPSConnectionPool(host='opendart.fss.or.kr', port=443): Read timed out. (read timeout=60.0)"] |
-| 이벤트 행 | 78445 |
+| 이벤트 행 | 80572 |
 | 재무 행 | 0 |
 
 
