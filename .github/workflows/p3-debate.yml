@@ -23,7 +23,7 @@ jobs:
       IN: ${{ inputs.in_dir }}
       TG_TOKEN: ${{ secrets.TELEGRAM_BOT_KEY }}
       TG_CHAT: ${{ secrets.CHAT_ID }}
-      TOOLS: "--allowedTools Read,Write,Glob,Grep,WebSearch,WebFetch --max-turns 120"   # 임의값, 튜닝 필요
+      TOOLS: "--allowedTools Read,Write,Glob,Grep,WebSearch,WebFetch --max-turns 250"   # 임의값, 튜닝 필요 (3종목 테스트 축당 약 3분 → 20종목 확장 시 턴 부족 방지)
     steps:
       - uses: actions/checkout@v4
         with: { ref: main }   # 왜: 호출 시점 SHA에는 방금 커밋된 decisions CSV가 없음
@@ -67,7 +67,10 @@ jobs:
           claude_args: "--allowedTools Read,Write,Glob,Grep --max-turns 60"
       - name: 결과 검증·선정
         id: pick
-        run: python3 phase3/finalize.py "$IN" "$D"
+        # 왜 pip: 러너 기본 python에 pandas 없음(1·2차 테스트 실패 원인)
+        run: |
+          pip install -q pandas
+          python3 phase3/finalize.py "$IN" "$D"
       - name: 커밋
         if: always()   # 왜: 실패해도 축별 의견·토론 전문을 남겨 원인 확인·수기 채점에 사용
         run: |
