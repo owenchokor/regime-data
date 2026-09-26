@@ -11,14 +11,14 @@ jobs:
       contents: read
       id-token: write
     env:
-      TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TG_TOKEN: ${{ secrets.TELEGRAM_BOT_KEY }}
       TG_CHAT: ${{ secrets.CHAT_ID }}
     steps:
       - uses: actions/checkout@v4
       - name: Telegram 사전점검
         # 왜: 이전 실행은 curl -s가 HTTP 오류를 삼켜 전송 실패가 성공으로 보였음 → 응답 ok 필드로 판정
         run: |
-          test -n "$TG_TOKEN" || { echo "TELEGRAM_BOT_TOKEN 비어있음(Secret 이름 확인)"; exit 1; }
+          test -n "$TG_TOKEN" || { echo "TELEGRAM_BOT_KEY 비어있음(Secret 이름 확인)"; exit 1; }
           test -n "$TG_CHAT"  || { echo "CHAT_ID 비어있음(Secret 이름 확인)"; exit 1; }
           echo "getMe:";   curl -s "https://api.telegram.org/bot${TG_TOKEN}/getMe" | python3 -c "import json,sys;d=json.load(sys.stdin);print(d.get('ok'),d.get('description'),d.get('result',{}).get('username'))"
           echo "getChat:"; curl -s "https://api.telegram.org/bot${TG_TOKEN}/getChat" --data-urlencode chat_id="$TG_CHAT" | python3 -c "import json,sys;d=json.load(sys.stdin);print(d.get('ok'),d.get('description'),d.get('result',{}).get('title'),d.get('parameters'))"
