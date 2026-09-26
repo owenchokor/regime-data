@@ -28,12 +28,12 @@
 - 적자·과열 종목은 평균은 높고 중앙값은 낮은 복권형 → 5개로 좁힐 때는 회피.
 - 딜 고정 종목(주식교환·합병·자산매각·청산 진행)은 월내 상대수익 −0.8%p, 공시로만 식별 → 발견 시 0–29.
 
-## 3축 (가안, 미확정)
+## 3축 (가안, 미확정 — 필명은 phase3/personas.json)
 | 축 | 담당 | CSV 컬럼 |
 |---|---|---|
-| G 성장·기대치 | 실적 추세, 추정치·목표주가 변화, 수주·신사업 | eps, eps_g3, eps_updated_3m, loss |
-| V 가치·재무·딜리스크 | 밸류에이션 맥락, 재무건전성, 합병·교환·매각·청산 등 딜 | per, pbr, div, loss, impair, deal_flag, fin_flag |
-| M 시장·모멘텀·거시 | 수급·과열, 업종 흐름, 뉴스 분위기, 거시 | high52, at_52wh, r1m, vol20, amt_ratio, sector, mcap_rank, gate |
+| G 성장 스카우트 (성장·기대치) | 실적 추세, 추정치·목표주가 변화, 수주·신사업 | eps, eps_g3, eps_updated_3m, loss |
+| V 밸류 가드 (가치·재무·딜리스크) | 밸류에이션 맥락, 재무건전성, 합병·교환·매각·청산 등 딜 | per, pbr, div, loss, impair, deal_flag, fin_flag |
+| M 마켓 서퍼 (시장·모멘텀·거시) | 수급·과열, 업종 흐름, 뉴스 분위기, 거시 | high52, at_52wh, r1m, vol20, amt_ratio, sector, mcap_rank, gate |
 
 ## 구간별 기준 예시
 미작성 (다음 작업: 과거 사례로 70점 경계 예시 작성).

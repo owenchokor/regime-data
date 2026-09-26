@@ -6,10 +6,12 @@ on:
     inputs:
       month: { type: string, required: true }
       in_dir: { type: string, default: forward/decisions }
+      reuse_scores: { type: boolean, default: false }
   workflow_dispatch:
     inputs:
       month: { type: string, required: true }
       in_dir: { type: string, default: phase3/test }
+      reuse_scores: { type: boolean, default: false, description: "기존 scores로 선정·이미지·텔레그램만 재실행(LLM 미사용)" }
 concurrency: { group: p3-debate, cancel-in-progress: false }
 jobs:
   debate:
@@ -27,17 +29,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { ref: main }   # 왜: 호출 시점 SHA에는 방금 커밋된 decisions CSV가 없음
-      - run: pip install -q pandas requests
+      - run: |
+          pip install -q pandas requests matplotlib
+          sudo apt-get install -y -q fonts-nanum >/dev/null   # 채점표 한글 렌더링
       - name: 입력 확인·시작 알림
         run: |
           test -s "$IN/$D.csv" || { echo "입력 없음 $IN/$D.csv"; exit 1; }
           mkdir -p "$IN/work"
-          curl -s -o /dev/null "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" --data-urlencode chat_id="$TG_CHAT" \
+          [ "${{ inputs.reuse_scores }}" = "true" ] || curl -s -o /dev/null "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" --data-urlencode chat_id="$TG_CHAT" \
             --data-urlencode text="🗣 ${D} ③v2 에이전트 토론 진행중... ($(($(wc -l < "$IN/$D.csv") - 1))종목)"
       - name: 사용자 리포트 내려받기 (러너 전용, 커밋 안 함)
         run: python3 phase3/inbox.py fetch "$D"
       - name: G 성장·기대치
         id: g
+        if: ${{ !inputs.reuse_scores }}
         uses: anthropics/claude-code-action@v1
         timeout-minutes: 50
         with:
@@ -46,10 +51,11 @@ jobs:
           prompt: "phase3/debate_prompt.md 를 읽고 1단계를 AXIS=G 로 수행하라. D=${{ inputs.month }}, IN=${{ inputs.in_dir }}, OUT=${{ inputs.in_dir }}"
           claude_args: ${{ env.TOOLS }}
       - name: G 확인
-        if: always()
+        if: ${{ always() && !inputs.reuse_scores }}
         run: python3 phase3/check_axis.py G "${{ steps.g.outputs.execution_file }}"
       - name: V 가치·재무·딜
         id: v
+        if: ${{ !inputs.reuse_scores }}
         uses: anthropics/claude-code-action@v1
         timeout-minutes: 50
         with:
@@ -58,10 +64,11 @@ jobs:
           prompt: "phase3/debate_prompt.md 를 읽고 1단계를 AXIS=V 로 수행하라. D=${{ inputs.month }}, IN=${{ inputs.in_dir }}, OUT=${{ inputs.in_dir }}"
           claude_args: ${{ env.TOOLS }}
       - name: V 확인
-        if: always()
+        if: ${{ always() && !inputs.reuse_scores }}
         run: python3 phase3/check_axis.py V "${{ steps.v.outputs.execution_file }}"
       - name: M 시장·모멘텀·거시
         id: m
+        if: ${{ !inputs.reuse_scores }}
         uses: anthropics/claude-code-action@v1
         timeout-minutes: 50
         with:
@@ -70,10 +77,11 @@ jobs:
           prompt: "phase3/debate_prompt.md 를 읽고 1단계를 AXIS=M 으로 수행하라. D=${{ inputs.month }}, IN=${{ inputs.in_dir }}, OUT=${{ inputs.in_dir }}"
           claude_args: ${{ env.TOOLS }}
       - name: M 확인
-        if: always()
+        if: ${{ always() && !inputs.reuse_scores }}
         run: python3 phase3/check_axis.py M "${{ steps.m.outputs.execution_file }}"
       - name: 반박·종합
         id: s
+        if: ${{ !inputs.reuse_scores }}
         uses: anthropics/claude-code-action@v1
         timeout-minutes: 50
         with:
@@ -86,11 +94,13 @@ jobs:
         run: '[ -f "${{ steps.s.outputs.execution_file }}" ] && cp "${{ steps.s.outputs.execution_file }}" "$RUNNER_TEMP/exec_S.json" || true'
       - name: 사용량 기록
         # 왜: 구독 사용량은 API로 조회 불가 → 세션별 소요시간·턴·토큰·API환산비용을 남겨 규모 추정
-        if: always()
+        if: ${{ always() && !inputs.reuse_scores }}
         run: python3 phase3/metrics.py "$IN/work/${D}_metrics.json"
       - name: 결과 검증·선정
         id: pick
-        run: python3 phase3/finalize.py "$IN" "$D"
+        run: |
+          python3 phase3/finalize.py "$IN" "$D"
+          python3 phase3/render.py "$IN" "$D"
       - name: 커밋
         if: always()   # 왜: 실패해도 축별 의견·토론 전문을 남겨 원인 확인·수기 채점에 사용
         run: |
@@ -102,8 +112,9 @@ jobs:
       - name: 텔레그램 결과
         if: success()
         run: |
-          r=$(curl -s "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" --data-urlencode chat_id="$TG_CHAT" --data-urlencode text@"$IN/${D}_telegram.txt")
-          echo "$r" | python3 -c "import json,sys;d=json.load(sys.stdin);print('send:',d.get('ok'),d.get('description'));sys.exit(0 if d.get('ok') else 1)"
+          ok() { python3 -c "import json,sys;d=json.load(sys.stdin);print('send:',d.get('ok'),d.get('description'));sys.exit(0 if d.get('ok') else 1)"; }
+          curl -s "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" --data-urlencode chat_id="$TG_CHAT" --data-urlencode text@"$IN/${D}_telegram.txt" | ok
+          curl -s "https://api.telegram.org/bot${TG_TOKEN}/sendPhoto" -F chat_id="$TG_CHAT" -F photo=@"$IN/${D}_scorecard.png" -F caption="③v2 채점표 ${D}" | ok
       - name: 폴백
         if: failure()
         run: |

@@ -2,3 +2,4 @@
 __pycache__/
 data/
 phase3/inbox/*/
+research/exit_rules/out/*.parquet

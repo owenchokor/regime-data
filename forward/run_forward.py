@@ -16,13 +16,13 @@ import core, stocks
 DATA = os.environ.get("DATA_DIR", str(ROOT / "data"))
 core.DATA = stocks.DATA = DATA
 import variants
-import decision
+import decision, evaluate, exit_sim
 from variants import Sim, turnover_cost
 
 FIRST_DECISION = pd.Period(os.environ.get("FWD_FIRST_DECISION", "2026-09"), "M")
 STRATS = {"①BASE": {}, "②STOP10": {"stock_stop": 0.10}}
 STOP = 0.10
-CAPITAL = 10_000_000          # 사용자 지정 초기자금(원)
+CAPITAL = 100_000_000         # 사용자 지정 초기자금(원) — 2026-09-26 1천만→1억 변경(표시만, 수익률 불변)
 SCORE_TH, MAX_PICK = 70, 5    # ③v2 사전등록(2026-09-26 사용자 승인): 70점 이상 점수순 최대 5, 0개면 현금
 OUT = ROOT / "forward"; (OUT / "signals").mkdir(parents=True, exist_ok=True)
 
@@ -115,7 +115,27 @@ def main() -> None:
                             dd=(cum / pk - 1)[-1] if len(cum) else 0.0,
                             trigger=str(D[hit[0]].date()) if len(hit) else ""))
     nav = nav_paths(status_sig, ra, perf, rf, gate)
-    write_status(last_day, cur, status_sig, perf, mon, nav)
+
+    # ③v2: 청산 규칙별 NAV(A안 익일 종가 체결) + 월초 예측 적중 기록
+    extra = []
+    book = evaluate.load_book(OUT / "decisions")
+    if book:
+        kd = core.load_daily()["kospi"].dropna()
+        nav3 = {}
+        for nm_, rule in exit_sim.EXIT_RULES.items():
+            s3, _ = exit_sim.simulate(book, ra, kd, rf, CAPITAL, rule)
+            if len(s3):
+                nav3[f"③{nm_}"] = s3
+        if nav3:
+            n3 = pd.DataFrame(nav3)
+            nav = n3 if nav is None else nav.join(n3, how="outer")
+            nav[list(n3)] = nav[list(n3)].fillna(CAPITAL)          # 첫 진입 전은 원금 그대로
+        P, M, B = evaluate.predictions(book, ra, kd)
+        (OUT / "eval").mkdir(exist_ok=True)
+        P.to_csv(OUT / "eval" / "predictions.csv", index=False); M.to_csv(OUT / "eval" / "monthly.csv", index=False)
+        B.to_csv(OUT / "eval" / "buckets.csv")
+        extra = evaluate.status_section(M, B)
+    write_status(last_day, cur, status_sig, perf, mon, nav, extra)
     print("ok", last_day.date(), "signals", [str(k) for k in status_sig], "perf rows", len(perf))
 
 
@@ -185,8 +205,8 @@ def mermaid(nav: pd.DataFrame) -> str:
 
 def scores_section(p: Path) -> list[str]:
     """③v2 채점 결과: 점수 막대 + 기준선. 선정 = 기준 이상 점수순 최대 MAX_PICK."""
-    sc = pd.read_csv(p, dtype={"ticker": str}).sort_values("score", ascending=False)
-    pick = sc[sc.score >= SCORE_TH].head(MAX_PICK)
+    sc = pd.read_csv(p, dtype={"ticker": str, "name": str}).sort_values("score", ascending=False)
+    pick = sc[sc.shadow == 1] if "shadow" in sc else sc[sc.score >= SCORE_TH].head(MAX_PICK)   # finalize.py 선정 결과 우선
     L = [f"\n## ③v2 채점 ({p.stem.replace('_scores', '')} 결정, 기준 {SCORE_TH}점 · 최대 {MAX_PICK}개)",
          f"선정 {len(pick)}개" + (" → 전액 현금" if pick.empty else ": " + ", ".join(pick.name)), "",
          "```mermaid", "xychart-beta", '  title "종목별 점수 (선: 기준)"',
@@ -198,7 +218,7 @@ def scores_section(p: Path) -> list[str]:
     return L
 
 
-def write_status(last_day, cur, sig, perf, mon, nav=None) -> None:
+def write_status(last_day, cur, sig, perf, mon, nav=None, extra=None) -> None:
     L = [f"# Forward 모의운용 현황", f"갱신: 데이터 {last_day.date()} 기준\n",
          "사전등록: ① 52WH×PxMA10 기준형 / ② ① + 종목 트레일링 스톱 10%. 첫 보유월 2026-10.",
          "체결 가정: 백테스트와 동일(결정월 말 종가). 실제 체결은 신호 확인 다음 거래일이라 괴리 존재.\n"]
@@ -229,6 +249,9 @@ def write_status(last_day, cur, sig, perf, mon, nav=None) -> None:
     if len(perf):
         cum = (1 + perf[["①BASE", "②STOP10", "KOSPI"]]).prod() - 1
         L += ["\n## 완료 월 성과", perf.round(4).to_markdown(), "\n누적: " + " · ".join(f"{k} {v*100:+.1f}%" for k, v in cum.items())]
+    L += extra or []
+    L += ["\n### 청산 규칙 (③ 변형)", "③HOLD 다음 리밸런싱까지 보유 · ③T10 종목 트레일링 10% · ③R200 KOSPI 200일선 이탈 시 전량 청산 · ③T10+R200 둘 다.",
+          "모두 익일 종가 체결·편도 50bp·청산 후 CD 금리. 파라미터는 3차 연구값(③용 튜닝 아님). 과거 ① 기준 비교: research/exit_rules/out/exit_rules.png"]
     (OUT / "STATUS.md").write_text("\n".join(L) + "\n")
 
 
