@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>KOSPI 월간 기술적 타이밍 — 초과수익 검증 보고서</title>
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
+<style>
+:root{--bg:#f6f7fb;--card:#ffffff;--tx:#1b2333;--mut:#5a6578;--ln:#dde2ec;--acc:#0077a8;--good:#16833a;--bad:#c0245e;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#05080f;--card:#070b14;--tx:#c9d4e5;--mut:#8391a7;--ln:#1a2233;--acc:#00e5ff;--good:#39ff14;--bad:#ff2e88}}
+:root[data-theme="dark"]{--bg:#05080f;--card:#070b14;--tx:#c9d4e5;--mut:#8391a7;--ln:#1a2233;--acc:#00e5ff;--good:#39ff14;--bad:#ff2e88}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:Pretendard,"Noto Sans KR",system-ui,sans-serif;line-height:1.65;font-size:15px}
+main{max-width:1000px;margin:0 auto;padding:24px 16px 60px}
+h1{font-size:1.5rem;margin:.2em 0}h2{font-size:1.15rem;margin-top:2.2em;border-bottom:1px solid var(--ln);padding-bottom:.3em;color:var(--acc)}
+h3{font-size:1rem;margin-top:1.4em}
+.verdict{background:var(--card);border:1px solid var(--ln);border-left:4px solid var(--bad);padding:14px 16px;border-radius:8px;margin:16px 0}
+.note{color:var(--mut);font-size:.88rem}
+.fig{background:#05080f;border-radius:8px;margin:14px 0;overflow:hidden}
+.tw{overflow-x:auto;margin:10px 0}
+table.t{border-collapse:collapse;font-size:.82rem;white-space:nowrap}
+table.t th,table.t td{border-bottom:1px solid var(--ln);padding:5px 9px;text-align:right}
+table.t th:first-child,table.t td:first-child{text-align:left}
+table.t thead th, table.t tr:first-child th{color:var(--mut);font-weight:600}
+code{background:var(--card);border:1px solid var(--ln);padding:0 4px;border-radius:4px;font-size:.88em}
+.spec{background:var(--card);border:1px solid var(--ln);border-radius:8px;padding:12px 18px}
+.def{color:var(--mut);font-size:.88rem}
+</style></head><body><main>
+<h1>KOSPI 월간 기술적 타이밍 — 초과수익 검증 보고서</h1>
+<div class="note">데이터: KRX 지수 일봉(<code>owenchokor/regime-data</code> release <code>data-latest</code>) → 월말 종가 · 분석일 2026-09-26 · 코드: <code>research/monthly_timing/</code></div>
+
+<div class="verdict"><b>결론: No robust evidence of technical alpha.</b><br>
+월말 시점 정보(KOSPI·KOSDAQ 종가)만으로 다음 달 KOSPI 비중을 정해 B&amp;H를 위험조정 기준으로 이기는 전략은 통계적으로 확인되지 않았다. 가장 나은 후보(12개월 고점 대비 −5% 룰)는 2019~2024H1 walk-forward에서 MDD를 −34.6% → −13.5%로 줄였지만 Sharpe 개선(+0.10)은 우연과 구분되지 않았고(p≈0.40), 최종 holdout(2024-07~2026-08)에서는 B&amp;H에 CAGR −22.5%p, Sharpe −0.33 뒤졌다. 확인된 효과는 “수익 예측”이 아니라 “하락 추세 구간 노출 축소”라는 위험 측면뿐이다.</div>
+
+<h2>1. Dataset summary</h2>
+<p>KRX 지수 일봉 3,124거래일(2014-01-02 ~ 2026-09-23)을 월말 종가로 변환: 152개 월말(2014-01~2026-08), 월수익률 151개. 2026-09는 미완성 월이라 제외. 24개월 피처가 모두 계산되는 첫 수익월이 2016-01이므로 모든 전략·벤치마크 평가는 2016-01~2026-08(128개월) 공통 구간에서 했다.</p>
+<p><b>점검 결과.</b> 날짜 정렬 정상, 결측 0, 중복 0. 각 월의 마지막 관측일이 실제 그 달 마지막 거래일임을 다음 거래일의 월로 확인(예외 0). KOSPI·KOSDAQ 시작일 동일(2014-01-02). 월 거래일 16~23일(설·추석 월이 짧음). KOSPI(코드 1001)는 <b>가격지수</b>라 배당 미포함 — 수정주가 문제는 없지만 총수익(TR) 벤치마크는 아니다.</p>
+<p><b>비정상 변동.</b> 월 ±15% 초과 12건 중 7건이 2025-10 이후(예: 2026-04 +30.6%, 2026-07 −22.2%). 일간 +17.9%(2026-07-31) 같은 극단값도 있어, 같은 날 상장시가총액 변화율과 대조했고 전부 일치(예: +17.9% vs +18.1%) → 입력 오류가 아니라 실제 극단 국면으로 판단. 이 국면이 holdout 전체를 차지한다(holdout 연변동성 43.7% vs 개발구간 17.6%).</p>
+<p><b>시점 규칙.</b> Signal[t](t월말 종가까지) → Position[t+1] → Return[t+1]. 체결은 t월말 종가로 가정(1거래일 지연 체결은 10장에서 별도 검증). 현금 수익률은 0으로 가정(ECOS 금리 미사용, 15장 한계 참조).</p>
+<p><b>구간 설계(결과 보기 전 고정).</b> 개발 2016-01~2024-06(102개월) · 그 안의 walk-forward OOS 2019-01~2024-06(66개월, 6개 fold) · 최종 holdout 2024-07~2026-08(26개월, 전체의 20%).</p>
+
+<h2>2. Baseline results</h2>
+<p class="def">용어 — <b>CAGR</b>: 연평균 복리수익률. <b>Sharpe</b>: 월수익 평균 ÷ 표준편차 × √12, “변동 1단위당 수익”(현금 0% 가정). <b>MDD</b>: 고점 대비 최대 낙폭. <b>Calmar</b>: CAGR ÷ |MDD|. <b>하방편차</b>: 손실 월만으로 잰 변동성. 베이스라인 파라미터는 관례값으로 사전 고정(MA10 = Faber 2007).</p>
+<h3>전체 평가구간 2016-01~2026-08 (비용 0)</h3><div class="tw">{{B_full}}</div>
+<h3>개발구간 2016-01~2024-06</h3><div class="tw">{{B_dev}}</div>
+<h3>Holdout 2024-07~2026-08 (참고: 사전 고정 베이스라인)</h3><div class="tw">{{B_hold}}</div>
+<p>전 구간 B&amp;H Sharpe 0.58, MDD −34.6%. 개발구간만 보면 B&amp;H가 약했고(Sharpe 0.33) 추세 룰이 유리했지만, 전체로 보면 PxMA10만 B&amp;H와 비슷한 수준이다. KOSDAQ B&amp;H는 전 구간 KOSPI에 크게 뒤진다.</p>
+
+<h2>3. Feature engineering</h2>
+<p>후보 피처와 경제적 의미: <b>모멘텀</b>(1·2·3·6·9·12·18·24M 수익률 — 추세 지속), <b>가속도</b>(3M 모멘텀의 3개월 변화 — 추세 강화/약화), <b>추세</b>(가격/MA 3~24, MA3/12·MA6/12·MA12/24, MA 기울기 — 평균 가격 대비 위치), <b>변동성</b>(3·6·12M 실현변동성, vol3/vol12 — 위험 국면·변동성 군집), <b>상대강도</b>(KOSPI−KOSDAQ 1·3·6·12M 수익차, KOSPI/KOSDAQ 비율의 12M 평균 대비 위치, KOSDAQ 추세 — 시장 간 위험선호 전이), <b>국면/낙폭</b>(12M 고점 대비 낙폭, 누적 고점 대비 낙폭, 12M 저점 대비 거리).</p>
+<p>ML에는 사전 지정한 11개만 투입했고, 각 fold 훈련 데이터 안에서만 |상관| ≥ 0.8 피처를 제거했다(더 단순한 피처 우선 유지). 결과적으로 fold당 7~9개. 아래 상관표에서 보듯 mom6·mom12·가격/MA12·MA3/12·dd12가 0.7~0.93으로 묶여 사실상 <b>하나의 “추세” 축</b>이다.</p>
+{{F_corr}}
+
+<h2>4. Model comparison</h2>
+<p>Level 1 룰 9개 패밀리(53개 파라미터 조합), Level 2 회귀/분류 5종, Level 3 트리 3종(RF·GBM·LightGBM, 하이퍼파라미터는 얕게 고정한 임의값·미튜닝), Level 4 앙상블 2종(사전 고정 추세 위원회 8표, ML 확률 평균). 포지션은 이진(0/100%)·연속(확률)·3단계(0/50/100%, 훈련 예측값 삼분위로 절단)를 비교. expanding·rolling(36개월) 창 모두 실행 → walk-forward OOS 설정 71개.</p>
+{{F_cands}}
+<p><b>목표변수 A(다음 달 KOSPI 수익).</b> 예측력이 없다. walk-forward OOS에서 “항상 상승” 예측의 적중률이 57.6%인데 이를 의미 있게 넘는 분류기는 없었다(최고 59.1%). 회귀의 OOS R²(과거 평균 예측 대비 개선도, 0 미만 = 과거 평균보다 못함)는 OLS −0.86, Ridge −0.02. 시계열 교차검증으로 규제 강도를 고른 Lasso/ElasticNet은 거의 모든 fold에서 계수를 전부 0으로, 로지스틱은 2021년 이후 계수를 ≈0으로 만들었다 — <b>모델 선택 절차 자체가 “신호 없음”을 고른 것</b>이다. 그래서 Lasso/ENet의 3단계 포지션(노출 5%)은 퇴화한 결과로 해석에서 뺐다.</p>
+<p><b>목표변수 B(초과수익 = 전략 − B&amp;H).</b> KOSPI/현금 전략에서는 초과수익 = (비중 − 1) × KOSPI 수익이라, 투자 중엔 0, 현금일 땐 −KOSPI 수익이다. 즉 B의 부호 예측은 A의 부호 예측과 같은 문제라 별도 모델 대신 A 모델과 초과수익 통계(12장)로 다뤘다.</p>
+<p>상위권(ML GBM 3단계·rolling 0.52)은 같은 GBM의 다른 변형(expanding 0.28, 이진·rolling −0.06)과 크게 달라 사양 변화에 취약하다. 사전 규칙(Sharpe &gt; B&amp;H, MDD 개선, 파라미터 안정, 0.05 이내면 더 단순한 쪽)에 따라 최종 후보는 <b>12개월 고점 대비 낙폭 룰(DD 패밀리 nested 선택)</b>로 정했다.</p>
+
+<h2>5. Walk-forward validation</h2>
+<p class="def"><b>Walk-forward</b>: 매년 초 그 시점까지의 데이터로만 파라미터를 고르고, 다음 1년에 그대로 적용하는 것을 반복. <b>Nested 선택</b>: 파라미터 선택도 훈련구간 안에서만(여기선 20bps 비용 후 Sharpe 최대).</p>
+<div class="tw">{{FOLD}}</div>
+<p>DD 패밀리는 6개 fold 모두 같은 파라미터(12M 고점, −5%)를 골랐다(rolling 창에서도 6개 중 5개). 반면 53개 룰 전체에서 고르게 하면 매년 다른 룰(Rel12→Vol6→TSMOM9→Rel3)로 바뀌었고 OOS Sharpe는 0.06(expanding), −0.12(rolling)로 무너졌다. 이평 패밀리도 매년 N이 11→13→18→18→13→12로 바뀌며 OOS Sharpe 0.05에 그쳤다. <b>“과거 최고 파라미터”는 다음 해로 잘 옮겨지지 않는다.</b></p>
+
+<h2>6. Out-of-sample results (walk-forward OOS 2019-01~2024-06)</h2>
+<div class="tw">{{FT_WF}}</div>
+<p>20bps 기준 Sharpe 0.48 vs B&amp;H 0.39, MDD −13.5% vs −34.6%, 하방편차 5.2% vs 13.6%. 대신 CAGR은 4.7% vs 5.9%로 낮다. 평균 노출 41% — 수익을 더 낸 게 아니라 위험을 덜 진 결과다.</p>
+{{F_equity}}
+
+<h2>7. Final holdout results (2024-07~2026-08, 1회 평가)</h2>
+<p>개발구간 전체로 동결한 파라미터(12M, −5%)를 그대로 적용.</p>
+<div class="tw">{{FT_HOLD}}</div>
+<p>CAGR 28.4% vs 50.9%, Sharpe 0.83 vs 1.16, MDD는 둘 다 −22.2%. 이 구간 최악 두 달(2026-03 −19.1%, 2026-07 −22.2%)이 모두 <b>고점 근처에서 갑자기 터진 하락</b>이라 룰이 투자 중이었고, 반대로 3월 급락 직후의 2026-04(+30.6%)와 2025년 상반기 반등 초입은 현금으로 놓쳤다. 월말 추세 룰의 구조적 약점(급락은 못 피하고 반등은 늦게 탐)이 그대로 드러났다.</p>
+<p class="note">Development: 2016-01~2024-06 (in-sample Sharpe 0.58 vs 0.33) · Validation: walk-forward 2019-01~2024-06 (0.48 vs 0.39) · Final holdout: 2024-07~2026-08 (0.83 vs 1.16)</p>
+
+<h2>8. Transaction-cost analysis</h2>
+<p>신호가 바뀔 때만 거래, 비용 = |비중 변화| × 편도 비용. 연회전 1.6~2.3회로 낮아 비용 민감도는 작다(WF Sharpe 0bp 0.51 → 50bp 0.44). 비용 때문에 결론이 바뀌지는 않는다.</p>
+{{F_cost}}
+
+<h2>9. Drawdown analysis</h2>
+{{F_dd}}
+<p>2021-07~2022-09 약세장: 룰 −7.1% vs B&amp;H −34.6%(2021-10부터 현금). 2018-10~2019-01: 0.0% vs −5.9%. COVID(2020-02~04): −6.4% vs −8.1%(2월 급락은 맞음). 2024-07~12: −7.5% vs −14.2%. 2026-03·2026-07: 둘 다 B&amp;H와 동일 손실. <b>완만히 진행되는 약세장엔 강하고, 고점에서의 단발 급락엔 무력하다.</b></p>
+
+<h2>10. Robustness tests</h2>
+<h3>A. 파라미터 섭동</h3>
+{{F_pert}}
+<p>허용 낙폭 3~8% × 고점 창 9~18개월 영역은 대부분 B&amp;H(0.33)를 웃돈다. 그러나 −10%부터는 Sharpe ≈ 0으로 급락하는 절벽이 있고, W=6은 약하다. 선택된 −5%는 원래 그리드({5,10,15,20,25})의 가장자리였다. 인접값(−4%: 0.41, −6%: 0.65)은 유지되나 표면이 매끄럽지 않다 → 부분적 통과. 이평 룰은 N=6~24 전 범위가 0.30~0.53으로 매끄럽지만 연도별 선택 시 성능이 무너졌다(5장).</p>
+<h3>B. 서브기간 (20bps)</h3>
+<p>2016-2018(개발, in-sample): Sharpe 0.83 vs 0.17 · 2019-2021(WF): 0.76 vs 0.76 · 2022-2024H1(WF): −0.03 vs −0.01(MDD −8.7% vs −27.6%) · 2024H2-2026(holdout): 0.83 vs 1.16. <b>Sharpe 우위는 in-sample 3년에만 뚜렷하고 이후 3개 구간에선 동률 또는 열위.</b> 일관된 건 MDD 축소뿐(마지막 구간 제외).</p>
+{{F_yearly}}
+<h3>C. 국면별 (월초 시점 정보로 분류, 2016-01~2026-08)</h3>
+<p>강세(직전 12M 수익 &gt; 0, 73개월): 월평균 1.58% vs 1.74%, 변동성 25.6% vs 29.3%. 약세(55개월): 0.05% vs 0.57%, 변동성 4.6% vs 19.3%. 고변동성(95개월): 1.03% vs 1.37%. 저변동성(33개월): 0.61% vs 0.86%. <b>모든 국면에서 평균수익은 B&amp;H보다 낮고, 약세 국면의 변동성만 크게 낮다.</b></p>
+<h3>D. 실행 지연</h3>
+<p>신호 다음 거래일 종가 체결로 바꾸면 WF Sharpe 0.41 vs B&amp;H 0.36(MDD −14.4% vs −32.7%), holdout 0.89 vs 1.19. 방향은 같다.</p>
+
+<h2>11. Statistical significance</h2>
+<p class="def"><b>부트스트랩</b>: 실제 월수익을 블록 단위(평균 6개월)로 다시 뽑아 수천 번 재현, Sharpe 차이의 흔들림 폭 추정. <b>순열검정</b>: 룰의 포지션 패턴을 시간축으로 통째로 밀어(노출·신호 자기상관 유지) 수익과의 정렬만 깨뜨렸을 때 실제보다 좋은 경우의 비율. <b>Newey-West t</b>: 자기상관·이분산을 보정한 t값. <b>타이밍 알파</b>: 전략 수익 = α + β × KOSPI 수익 회귀의 α — 노출 축소로 설명되지 않는 추가 수익.</p>
+<div class="tw">{{STATS}}</div>
+<p>WF-OOS에서도 ΔSharpe 95% 구간이 [−0.69, +0.68]로 0을 크게 걸친다. 66개월에서 Sharpe의 표준오차는 약 0.4 수준이라 0.1 차이는 측정 불가능한 크기다. 타이밍 알파는 어떤 구간에서도 유의하지 않고(β 0.29~0.78), <b>초과 위험조정 성과는 “덜 투자한 것”으로 설명된다.</b></p>
+{{F_perm}}
+
+<h2>12. Data-snooping / overfitting assessment</h2>
+<p>탐색 규모: 고정 파라미터 룰 53개, nested 선택 18개, ML 변형 52개, 위원회 1개, 베이스라인 3개, 섭동 56개 — 약 183회 평가, walk-forward OOS 비교 대상 71개.</p>
+<p><b>Hansen SPA / White Reality Check</b>(“53개 룰 중 가장 좋은 것조차 B&amp;H를 이겼다고 볼 수 있나”를 룰 간 상관까지 반영해 검정, 개발구간·20bps): 원수익 기준 p = 0.59(SPA) / 0.64(RC), 변동성 맞춤 기준 p = 0.63 / 0.64. 개별 최고(Rel3, 단측 p = 0.047)도 Holm 보정 후 기각 0개. → <b>53개 중 최고 성과는 탐색 횟수로 충분히 설명된다.</b></p>
+<p>과적합 징후: (1) nested “전체 룰” 선택이 매년 바뀌며 OOS 붕괴, (2) ML 상위 결과가 사양 변화에 따라 부호까지 바뀜, (3) 규제 모델이 계수를 0으로 수렴, (4) 개발구간 성과가 대부분 2016-2018 in-sample에 집중.</p>
+
+<h2>13. Economic interpretation</h2>
+<p><b>통계적으로 확인된 것:</b> 12M 고점 부근일 때만 투자하는 룰은 완만한 약세장에서 노출을 줄여 변동성·MDD를 낮춘다. 다음 달 수익 방향 자체는 예측되지 않았다(적중률·OOS R²·알파 모두 무의미).</p>
+<p><b>가능한 설명(검증 안 됨, 구분해서 제시):</b> 변동성 군집 — 하락 추세는 고변동 국면과 겹치므로 그때 노출을 줄이면 수익 대비 위험이 개선될 수 있다(약세 국면 변동성 4.6% vs 19.3%는 이와 부합). 시계열 모멘텀(Moskowitz·Ooi·Pedersen 2012)과 이평 타이밍(Faber 2007)은 해외 장기 데이터에서 보고된 현상이지만, 128개월 단일 지수로는 그 존재를 확인하지도 부정하지도 못한다. KOSPI−KOSDAQ 상대강도(시장 간 위험선호 전이)는 in-sample 최고였으나 nested OOS에서 0.16/−0.15로 재현되지 않았다.</p>
+
+<h2>14. Final strategy specification</h2>
+<p>아래는 “알파 전략”이 아니라 <b>검증 절차가 최종 선택한 규칙의 명세</b>다. 성과 근거는 위험 축소에 한정된다.</p>
+<div class="spec">
+<p><b>DD12-5 (KOSPI 고점 근접 필터)</b> — 파라미터: 고점 창 W = 12개월(월말 종가 기준, 당월 포함), 허용 낙폭 X = 5%.</p>
+<p>매월 마지막 거래일 장 마감 후:</p>
+<p>1) P = 당월 KOSPI 종가, H = 최근 12개 월말 종가(당월 포함)의 최댓값<br>
+2) D = P / H − 1<br>
+3) D &gt; −5% → 다음 달 KOSPI 100% / D ≤ −5% → 다음 달 현금 100%<br>
+4) 포지션이 바뀔 때만 매매(당월 종가 또는 다음 거래일 종가). 월중 재평가·손절 없음.</p>
+<p class="note">walk-forward OOS 평균 노출 41%, 연회전 1.6회. holdout에선 노출 62%.</p>
+</div>
+
+<h2>15. Limitations</h2>
+<p>표본: 평가 128개월, holdout 26개월 — Sharpe 차이를 판별하기엔 턱없이 짧다. 벤치마크: 가격지수라 배당(B&amp;H 쪽 불리)과 현금 이자(전략 쪽 불리)가 모두 빠졌다; KOSPI TR과 CD/콜금리로 재계산 필요(ECOS 연결 후). 월말 한 번만 판단하므로 월중 급락 대응 불가. 동일 데이터에서 개발자가 사전에 지수 경로(2025~26 급등)를 알고 있었다는 점은 holdout의 “미관측성”을 완벽히 보장하지 못한다. 2025-10 이후 극단 변동 국면이 holdout 전체라 일반 국면 대표성이 낮다. 단일 시장·단일 자산이라 결과를 일반화할 수 없다.</p>
+<p><b>프로젝트 목표 관점 메모.</b> 이 룰을 Phase 2 레짐 게이트로 쓰는 안은 검증 전엔 보류가 맞다. 기존 개별종목 신호가 KOSPI 저점 부근에 몰려 있다는 관측과 부딪히기 때문이다 — 이 룰은 바로 그 구간에 현금이다. 게이트로 쓸지는 Phase 1 포트폴리오 백테스트에서 “게이트 on/off” 비교로 판정해야 한다.</p>
+</main></body></html>
