@@ -5,7 +5,7 @@ from pathlib import Path
 
 out = {}
 for k in ("G", "V", "M", "S"):
-    f = os.environ.get(f"F_{k}")
+    f = str(Path(os.environ.get("RUNNER_TEMP", "/tmp")) / f"exec_{k}.json")   # check_axis.py 가 세션마다 복사
     if not f or not Path(f).exists():
         out[k] = None; continue
     try:

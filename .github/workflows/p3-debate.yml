@@ -23,7 +23,7 @@ jobs:
       IN: ${{ inputs.in_dir }}
       TG_TOKEN: ${{ secrets.TELEGRAM_BOT_KEY }}
       TG_CHAT: ${{ secrets.CHAT_ID }}
-      TOOLS: "--allowedTools Read,Write,Glob,Grep,WebSearch,WebFetch --max-turns 250"   # 임의값, 튜닝 필요 (3종목 테스트 축당 약 3분 → 20종목 확장 시 턴 부족 방지)
+      TOOLS: "--allowedTools Read,Write,Edit,MultiEdit,Glob,Grep,WebSearch,WebFetch --max-turns 250"   # 임의값, 튜닝 필요 (3종목 테스트 축당 약 3분 → 20종목 확장 시 턴 부족 방지)
     steps:
       - uses: actions/checkout@v4
         with: { ref: main }   # 왜: 호출 시점 SHA에는 방금 커밋된 decisions CSV가 없음
@@ -45,6 +45,9 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           prompt: "phase3/debate_prompt.md 를 읽고 1단계를 AXIS=G 로 수행하라. D=${{ inputs.month }}, IN=${{ inputs.in_dir }}, OUT=${{ inputs.in_dir }}"
           claude_args: ${{ env.TOOLS }}
+      - name: G 확인
+        if: always()
+        run: python3 phase3/check_axis.py G "${{ steps.g.outputs.execution_file }}"
       - name: V 가치·재무·딜
         id: v
         uses: anthropics/claude-code-action@v1
@@ -54,6 +57,9 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           prompt: "phase3/debate_prompt.md 를 읽고 1단계를 AXIS=V 로 수행하라. D=${{ inputs.month }}, IN=${{ inputs.in_dir }}, OUT=${{ inputs.in_dir }}"
           claude_args: ${{ env.TOOLS }}
+      - name: V 확인
+        if: always()
+        run: python3 phase3/check_axis.py V "${{ steps.v.outputs.execution_file }}"
       - name: M 시장·모멘텀·거시
         id: m
         uses: anthropics/claude-code-action@v1
@@ -63,6 +69,9 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           prompt: "phase3/debate_prompt.md 를 읽고 1단계를 AXIS=M 으로 수행하라. D=${{ inputs.month }}, IN=${{ inputs.in_dir }}, OUT=${{ inputs.in_dir }}"
           claude_args: ${{ env.TOOLS }}
+      - name: M 확인
+        if: always()
+        run: python3 phase3/check_axis.py M "${{ steps.m.outputs.execution_file }}"
       - name: 반박·종합
         id: s
         uses: anthropics/claude-code-action@v1
@@ -71,15 +80,13 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           prompt: "phase3/debate_prompt.md 를 읽고 2단계(SYNTH)를 수행하라. D=${{ inputs.month }}, IN=${{ inputs.in_dir }}, OUT=${{ inputs.in_dir }}"
-          claude_args: "--allowedTools Read,Write,Glob,Grep --max-turns 60"
+          claude_args: "--allowedTools Read,Write,Edit,MultiEdit,Glob,Grep --max-turns 60"
+      - name: 종합 실행기록 보존
+        if: always()
+        run: '[ -f "${{ steps.s.outputs.execution_file }}" ] && cp "${{ steps.s.outputs.execution_file }}" "$RUNNER_TEMP/exec_S.json" || true'
       - name: 사용량 기록
         # 왜: 구독 사용량은 API로 조회 불가 → 세션별 소요시간·턴·토큰·API환산비용을 남겨 규모 추정
         if: always()
-        env:
-          F_G: ${{ steps.g.outputs.execution_file }}
-          F_V: ${{ steps.v.outputs.execution_file }}
-          F_M: ${{ steps.m.outputs.execution_file }}
-          F_S: ${{ steps.s.outputs.execution_file }}
         run: python3 phase3/metrics.py "$IN/work/${D}_metrics.json"
       - name: 결과 검증·선정
         id: pick
