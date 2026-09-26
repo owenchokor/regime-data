@@ -1,0 +1,42 @@
+{
+ "G": {
+  "minutes": 0.3,
+  "turns": 11,
+  "subtype": "success",
+  "usd_api_equiv": 0.10898479999999999,
+  "input_tokens": 10,
+  "output_tokens": 1501,
+  "cache_read": 160429,
+  "cache_write": 15205
+ },
+ "V": {
+  "minutes": 0.3,
+  "turns": 11,
+  "subtype": "success",
+  "usd_api_equiv": 0.10898479999999999,
+  "input_tokens": 10,
+  "output_tokens": 1501,
+  "cache_read": 160429,
+  "cache_write": 15205
+ },
+ "M": {
+  "minutes": 0.3,
+  "turns": 11,
+  "subtype": "success",
+  "usd_api_equiv": 0.10898479999999999,
+  "input_tokens": 10,
+  "output_tokens": 1501,
+  "cache_read": 160429,
+  "cache_write": 15205
+ },
+ "S": {
+  "minutes": 0.3,
+  "turns": 11,
+  "subtype": "success",
+  "usd_api_equiv": 0.10898479999999999,
+  "input_tokens": 10,
+  "output_tokens": 1501,
+  "cache_read": 160429,
+  "cache_write": 15205
+ }
+}
