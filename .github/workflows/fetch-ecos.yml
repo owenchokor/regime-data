@@ -1,0 +1,31 @@
+name: fetch-ecos
+on:
+  workflow_dispatch:
+  push:
+    branches: [ecos-fetch]
+    paths: [collect/fetch_ecos.py, .github/workflows/fetch-ecos.yml]
+jobs:
+  ecos:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install pandas pyarrow requests
+      - name: Fetch ECOS
+        env:
+          ECOS_API_KEY: ${{ secrets.ECOS_API_KEY }}
+          ECOS_KEY: ${{ secrets.ECOS_KEY }}
+          BOK_API_KEY: ${{ secrets.BOK_API_KEY }}
+          BOK_ECOS_KEY: ${{ secrets.BOK_ECOS_KEY }}
+          ECOS_API: ${{ secrets.ECOS_API }}
+          ECOS: ${{ secrets.ECOS }}
+        run: python collect/fetch_ecos.py
+      - name: Upload
+        if: always()
+        run: ls data/ecos_* 2>/dev/null && gh release upload data-latest data/ecos_* --clobber || echo "no ecos output"
