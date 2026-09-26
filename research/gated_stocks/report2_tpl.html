@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>KOSPI 레짐 게이트 × 개별주 · 위험 고려 재검증</title>
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
+<style>
+:root{--bg:#f6f7fb;--card:#ffffff;--tx:#1b2333;--mut:#5a6578;--ln:#dde2ec;--acc:#0077a8;--good:#16833a;--bad:#c0245e;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#05080f;--card:#070b14;--tx:#c9d4e5;--mut:#8391a7;--ln:#1a2233;--acc:#00e5ff;--good:#39ff14;--bad:#ff2e88}}
+:root[data-theme="dark"]{--bg:#05080f;--card:#070b14;--tx:#c9d4e5;--mut:#8391a7;--ln:#1a2233;--acc:#00e5ff;--good:#39ff14;--bad:#ff2e88}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:Pretendard,"Noto Sans KR",system-ui,sans-serif;line-height:1.65;font-size:15px}
+main{max-width:1000px;margin:0 auto;padding:24px 16px 60px}
+h1{font-size:1.5rem;margin:.2em 0}h2{font-size:1.15rem;margin-top:2.2em;border-bottom:1px solid var(--ln);padding-bottom:.3em;color:var(--acc)}
+h3{font-size:1rem;margin-top:1.4em}
+.verdict{background:var(--card);border:1px solid var(--ln);border-left:4px solid var(--bad);padding:14px 16px;border-radius:8px;margin:16px 0}
+.note{color:var(--mut);font-size:.88rem}
+.fig{background:#05080f;border-radius:8px;margin:14px 0;overflow:hidden}
+.tw{overflow-x:auto;margin:10px 0}
+table.t{border-collapse:collapse;font-size:.82rem;white-space:nowrap}
+table.t th,table.t td{border-bottom:1px solid var(--ln);padding:5px 9px;text-align:right}
+table.t th:first-child,table.t td:first-child{text-align:left}
+table.t thead th, table.t tr:first-child th{color:var(--mut);font-weight:600}
+code{background:var(--card);border:1px solid var(--ln);padding:0 4px;border-radius:4px;font-size:.88em}
+.spec{background:var(--card);border:1px solid var(--ln);border-radius:8px;padding:12px 18px}
+.def{color:var(--mut);font-size:.88rem}
+</style></head><body><main>
+<h1>KOSPI 레짐 게이트 × 개별주 전략 · 위험 고려 재검증</h1>
+<div class="note">2차 연구 · 2026-09-26 · 데이터: KRX 전종목 일별 패널 + KRX 지수 + ECOS 시장금리 · 코드 <code>research/gated_stocks/</code></div>
+<div class="verdict"><b>결론: 여전히 No robust evidence of technical alpha.</b><br>
+가장 유력한 후보는 <b>“52주 고점에 가장 가까운 시총상위500 종목 20개 + KOSPI 추세 게이트”</b>다. walk-forward OOS(2019-01~2024-06)에서는 Sharpe 0.73 vs KOSPI 0.28, MDD −18% vs −35%, 연 알파 +10.5%(p=0.055)였다. 같은 유니버스에서 무작위 20종목보다도 확실히 나았다(p&lt;0.01). 그러나 53~90개 조합 탐색을 보정하면 유의하지 않았다(SPA p≈0.6). 최종 holdout(2024-07~2026-08)에서는 CAGR −7% vs KOSPI +51%, MDD −52%로 붕괴했다. 수익 대신 위험지표(Sharpe·Sortino·Calmar·MDD 제약)로 고르는 방식도 OOS 성과를 일관되게 개선하지 못했다.</div>
+
+<h2>1. Dataset summary</h2>
+<p><b>개별주.</b> KRX 전종목 일별 횡단면 패널 3,124거래일 × 3,361종목(해당일 상장 종목 전부 — 이후 상장폐지 종목 포함, 생존편향 없음). 원천은 미수정 종가·상장주식수·시총·거래량이다.</p>
+<p><b>수정주가 복원.</b> 일간 ±12% 초과 변동 중 −5~+40거래일 창 안에서 상장주식수가 역비율로 변한 3,308건을 기업행동으로 보고 제거했다. 그중 약 25%는 당일 매칭, 중앙값은 12거래일 뒤 매칭(무상증자 신주상장 지연 패턴)으로 레퍼런스 문서와 일치한다. 매칭되지 않은 ±30% 초과 1,797건은 두 방향을 다르게 처리했다. <b>상승은 0으로 처리</b>했다(가격제한폭 ±30% 아래에서 정상 거래로는 불가능). <b>하락은 유지</b>했다(정리매매일 수 있음 — 보수적 비대칭). 이런 이벤트가 최근 12개월 안에 있는 종목은 형성 시점에 제외했다(과거 정보만 사용).</p>
+<p><b>유니버스(형성월 말).</b> 보통주(티커 끝자리 0), 상장 13개월 이상, 월말 거래 있음(정지 제외), 시총 상위 500. 시총 하한은 미확정 항목이라 300/1000으로 강건성을 병행했다. 월 수익은 형성월 말 → 다음 달 말(상폐 달은 마지막 거래가) 기준이다.</p>
+<p><b>ECOS.</b> GitHub Actions에서 시크릿 <code>ECOS_KEY</code>로 수집(<code>collect/fetch_ecos.py</code>, 721Y001 시장금리·722Y001 기준금리, 2010-01~2026-08). 활용은 두 가지다. 첫째, <b>CD(91일) 월평균/12</b>를 현금 수익률이자 Sharpe의 무위험수익으로 사용(1차 보고서의 현금 0% 가정 해소). 둘째, 거시 게이트 3종에 사용: 장단기 스프레드 &gt; 과거 중앙값, BBB−AA 신용스프레드 3개월 축소, CD 3개월 하락. 게이트 피처는 공표 시점을 보수적으로 잡아 1개월 지연했다.</p>
+{{F_ecos}}
+<p><b>구간.</b> 1차와 동일: walk-forward OOS 2019-01~2024-06, holdout 2024-07~2026-08. <b>주의:</b> holdout 기간의 KOSPI 경로는 1차 연구에서 이미 봤다. 개별주 전략의 holdout 수익은 선택 전에 보지 않았지만, 완전히 미관측인 holdout은 아니다.</p>
+
+<h2>2. Baseline &amp; 위험 지표</h2>
+<p class="def">새로 추가한 위험 지표. <b>Sharpe</b>는 이번부터 (수익 − CD 금리)의 평균 ÷ 표준편차 × √12다. <b>Sortino</b>는 같은 초과수익을 손실 쪽 변동만으로 나눈 값(하락 위험 1단위당 수익)이다. <b>CVaR 5%</b>는 최악 5% 달의 평균 수익이다. <b>최장 수면하</b>는 직전 고점을 회복하지 못한 가장 긴 기간(월)이다.</p>
+<p>벤치마크(WF-OOS, 초과수익 기준): KOSPI B&amp;H Sharpe 0.28 · MDD −34.6% / 시총상위500 동일가중 0.18 · −32.3%.</p>
+
+<h2>3. Feature · 전략 설계</h2>
+<p><b>종목 선택 전략 8종</b>(매월 상위 20종목 동일가중, 파라미터는 문헌 관례로 사전 고정)은 다음과 같다. 12-1개월 모멘텀, 6-1개월 모멘텀, <b>52주 고점 근접도</b>(현재가 ÷ 52주 최고가 — 투자자가 고점을 기준점으로 삼아 반응이 늦는다는 가설), 1개월 반전, 3개월 반전(눌림목), 저변동성, 위험조정 모멘텀(12-1M ÷ 변동성), 모멘텀+저변동 순위합. 여기에 유니버스 동일가중을 더했다.</p>
+<p><b>ML 4종</b>은 월별로 순위를 정규화한 피처 8개(위 7개 + 규모)로 다음 달 수익 순위를 맞히는 Ridge·LightGBM이다. 목표변수는 두 가지를 썼다: 원수익 순위와 <b>위험조정 수익(수익 ÷ 변동성) 순위</b>. 하이퍼파라미터는 임의값·미튜닝, 연 1회 walk-forward로 재학습했다.</p>
+<p><b>KOSPI 게이트 10종</b>은 ALWAYS, DD12&gt;−5%/−10%, PxMA10/12, TSMOM12, 변동성타깃 VT6(연속), TermUp, CredEasing, RateFalling이다. 게이트가 꺼지면 해당 비중은 CD 금리 현금으로 둔다. 전략 13 × 게이트 10 = 130개 조합이다.</p>
+
+<h2>4. Model comparison (walk-forward OOS, 50bp)</h2>
+{{F_heat}}
+<p>게이트 없이는 52WH(0.49)만 KOSPI를 넘었다. 모멘텀 12-1과 6-1은 MDD −66~−79%로 무너졌다(모멘텀 크래시). 게이트를 붙이면 거의 모든 전략의 위험지표가 개선된다. 특히 TermUp(거시)과 PxMA10(추세)이 강했다. ML은 게이트 없이는 전부 음(−)의 Sharpe였고, 위험조정 목표로 바꿔도 개선되지 않았다.</p>
+
+<h2>5. Walk-forward validation — 위험 고려 목적함수별 nested 선택</h2>
+<p class="def">매년 초 그 시점까지의 데이터로만 “어떤 전략×게이트가 제일 나았나”를 5가지 기준으로 고른다: CAGR, Sharpe, Sortino, Calmar, 그리고 CAGR|MDD(훈련구간 KOSPI보다 MDD가 나쁜 후보를 탈락시킨 뒤 CAGR 최대). 이렇게 고른 것을 다음 1년에 적용한다.</p>
+<h3>B. 개별주 × 게이트</h3><div class="tw">{{P_B}}</div><div class="tw">{{T_B}}</div>
+<h3>A. KOSPI 지수 타이밍 (1차 분석을 위험 기준 + CD 현금으로 재실행)</h3><div class="tw">{{P_A}}</div><div class="tw">{{T_A}}</div>
+{{F_obj}}
+<p><b>위험 기준 선택의 결과.</b> 목적함수를 무엇으로 두느냐에 따라 OOS 성과가 크게 갈렸다. 지수 타이밍에서는 Sortino 0.48부터 Sharpe 0.12까지, 개별주에서는 CAGR 0.73부터 Calmar 0.32까지 벌어졌다. 어떤 위험 기준도 두 문제에서 모두 우월하지 않았다. Calmar(MDD 한 번에 좌우됨)가 가장 불안정했고, “MDD 제약 + CAGR”은 여기서 CAGR과 같은 답을 냈다. 결국 <b>목적함수 선택 자체가 또 하나의 과최적화 축</b>이다. 그래서 사전 규칙대로 “WF Sharpe 최대 + MDD가 KOSPI보다 양호 + 선택 안정성”으로 최종 후보를 정했다. 개별주는 nested[CAGR|MDD]이고 6개 fold 중 5개에서 52WH×DD12&gt;−5%를 골랐으며, 동결 결과는 52WH×PxMA10이다. 지수는 nested[Sortino]이고 동결 결과는 TermUp이다.</p>
+
+<h2>6. Out-of-sample results</h2>
+<p>개별주 최종 절차(WF): CAGR 13.7%, Sharpe 0.73, Sortino 1.57, MDD −18.1%, CVaR5 −7.8%, 최장 수면하 9개월. 대응하는 KOSPI는 5.9% · 0.28 · 0.41 · −34.6% · −12.1% · 36개월이다. 게이트의 기여를 보면, 같은 52WH를 게이트 없이 운용했을 때는 Sharpe 0.49, MDD −23.7%였다.</p>
+{{F_eq}}
+{{F_dd}}
+
+<h2>7. Final holdout (2024-07~2026-08)</h2>
+<div class="tw">{{T_H}}</div>
+<p>개별주 최종(52WH×PxMA10)은 CAGR −7.2%, Sharpe −0.06, MDD −51.6%였다. KOSPI는 +50.9% · 1.09 · −22.2%였다. 무작위 20종목(같은 게이트)보다도 나빴다(p=0.96). 붕괴는 2026-06(−21%, KOSPI 0%)과 2026-07(−31%, KOSPI −22%)에 집중됐다. 52주 고점 근처 종목이 급락장에서 가장 크게 빠졌고, 게이트는 고점 부근이라 켜져 있었다. 또 이 기간 KOSPI 상승은 대형주에 쏠려 동일가중 유니버스도 +16.3%에 그쳤다. 지수 타이밍 최종(TermUp)은 CAGR 1.7%, Sharpe 0.11로 KOSPI에 크게 뒤졌다.</p>
+{{F_yr}}
+
+<h2>8. Transaction-cost analysis</h2>
+<div class="tw">{{COST}}</div>
+<p>52WH는 월 편도 회전율이 81%로 높아 비용 민감도가 크다. WF Sharpe는 0bp 1.19 → 50bp 0.91로 내려간다(PxMA10 게이트). 비용 50bp는 매도세 포함 보수값(임의값)이다.</p>
+
+<h2>9. Drawdown analysis</h2>
+<p>WF 구간의 2022 약세장에서 게이트가 꺼져 52WH×PxMA10은 2022년 +2.5%였다(KOSPI −24.9%, 동일가중 −25.8%). 반면 holdout의 2026년 급락 두 번은 고점 부근에서 터져 게이트가 막지 못했다. 1차 연구의 지수 룰에서 본 것과 같은 구조적 약점이다: 월말 추세 게이트는 완만한 약세장만 걸러낸다.</p>
+
+<h2>10. Robustness tests</h2>
+{{F_rob}}
+<p>WF 기준으로 시총상위500에서 N=20~50은 Sharpe 0.82~0.91로 안정적이다. N=10은 0.45로 떨어지고, 상위1000 유니버스는 0.17~0.72로 약하다. 52주 창을 189~504거래일로 바꿔도 0.75~0.91을 유지하고, 126일만 0.52로 약하다. holdout 진단(사후)에서는 N이 클수록 덜 무너졌다(N=50: 0.54~0.59). 그러나 여전히 KOSPI 1.09보다 낮다. 이 관찰로 파라미터를 다시 고르면 holdout을 훈련에 쓰는 셈이므로 채택하지 않았다.</p>
+
+<h2>11. Statistical significance</h2>
+<div class="tw">{{STATS}}</div>
+{{F_rand}}
+<p>WF 구간에서 52WH×게이트의 종목 선택은 무작위보다 확실히 나았다(p≈0.000). KOSPI 대비 알파는 경계선(p=0.055)이었다. 게이트 없는 52WH는 KOSPI 대비(p=0.24)나 동일가중 대비(p=0.16)로 유의하지 않았다. WF와 holdout을 합친 92개월에서는 알파 −0.6%(p=0.94)로 사라진다.</p>
+
+<h2>12. Data-snooping / overfitting assessment</h2>
+<p>탐색 규모: 개별주 130개 조합 × 비용 4 × 목적함수 5, 지수 룰 56개 × 목적함수 5, 섭동 51개. <b>SPA/Reality Check</b>(개발구간, ML 제외 90개 조합, 50bp, KOSPI 대비)의 p는 원수익 기준 0.62/0.67, 변동성 맞춤 기준 0.55/0.57이다. 즉 90개 중 최고가 KOSPI를 이긴 것은 탐색 횟수로 설명된다. 여기에 목적함수 5개를 고르는 자유도까지 더해지므로, 보고된 WF 성과는 낙관 쪽으로 편향돼 있다고 봐야 한다.</p>
+
+<h2>13. Economic interpretation</h2>
+<p><b>통계적으로 관찰된 것.</b> ① 52주 고점 근접 종목은 2019~2024H1에 동일 유니버스 무작위 대비 우월했다. ② 시장 추세·거시 게이트는 모멘텀형 전략의 약세장 손실을 줄였다. ③ 2026 급락장에서는 같은 종목군이 가장 크게 하락했다.</p>
+<p><b>가능한 설명(검증 안 됨).</b> ①은 기준점 효과(George &amp; Hwang 2004)로, ②·③은 모멘텀 크래시(Daniel &amp; Moskowitz 2016: 시장 급변 국면에 모멘텀 포트폴리오가 급락)로 해석할 수 있다. holdout 부진은 대형주 쏠림 장세와 급락장이 겹친 결과로 보이지만 사후 해석이다. 12년·1개 시장에서는 “국면 탓”과 “신호 소멸”을 구분할 수 없다.</p>
+
+<h2>14. Final strategy specification (검증 실패 — 실거래 비권장)</h2>
+<div class="spec">
+<p><b>52WH × PxMA10</b> — 사전 규칙이 동결한 규칙. forward 검증 대상으로만 기록한다.</p>
+<p>매월 마지막 거래일 장 마감 후:<br>
+1) 유니버스: 보통주, 상장 13개월 이상, 당일 거래 있음, 최근 12개월 미해명 ±30% 점프 없음, 시총 상위 500<br>
+2) 점수 = 수정종가 ÷ 최근 252거래일 수정종가 최고치 → 상위 20종목 동일가중<br>
+3) 게이트: KOSPI 월말 종가 &gt; 최근 10개 월말 종가 평균이면 100% 투자, 아니면 100% 현금(CD)<br>
+4) 매월 교체, 게이트 변경 시 전량 매매</p>
+</div>
+
+<h2>15. Limitations</h2>
+<p>holdout 기간의 시장 경로를 1차에서 이미 봄. 데이터 종료 직전(2026-08 이후) 기업행동은 주식수 반영 전일 수 있어 매칭 누락 가능. 형성 직후 첫날 상폐 종목은 0% 처리. 스팩·리츠는 이름 기반 제외 없이 시총 필터에만 의존. 업종 정보가 없어 섹터 쏠림 미점검. 비용·세금은 편도 일괄 가정. KOSPI 가격지수(배당 제외) 벤치마크.</p>
+<p><b>목표 관점 정리.</b> 월간 기술적 신호만으로는 지수 타이밍이든 개별주든 “KOSPI를 이기는” 증거가 없다. 남은 유일한 단서는 52WH×게이트다. 다음 행동은 파라미터(N=20, 상위500, PxMA10)를 지금 고정하고 2026-09부터 forward 모의운용으로 확인하는 것이다. 이미 본 holdout에 맞춰 변형을 더 찾는 것은 중단한다.</p>
+</main></body></html>
