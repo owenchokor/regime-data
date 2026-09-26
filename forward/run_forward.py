@@ -21,6 +21,7 @@ from variants import Sim, turnover_cost
 FIRST_DECISION = pd.Period(os.environ.get("FWD_FIRST_DECISION", "2026-09"), "M")
 STRATS = {"①BASE": {}, "②STOP10": {"stock_stop": 0.10}}
 STOP = 0.10
+CAPITAL = 10_000_000          # 사용자 지정 초기자금(원)
 OUT = ROOT / "forward"; (OUT / "signals").mkdir(parents=True, exist_ok=True)
 
 
@@ -102,11 +103,76 @@ def main() -> None:
             mon.append(dict(ticker=h["ticker"], name=h["name"], ret=cum[-1] - 1 if len(cum) else 0.0,
                             dd=(cum / pk - 1)[-1] if len(cum) else 0.0,
                             trigger=str(D[hit[0]].date()) if len(hit) else ""))
-    write_status(last_day, cur, status_sig, perf, mon)
+    nav = nav_paths(status_sig, ra, perf, rf, gate)
+    write_status(last_day, cur, status_sig, perf, mon, nav)
     print("ok", last_day.date(), "signals", [str(k) for k in status_sig], "perf rows", len(perf))
 
 
-def write_status(last_day, cur, sig, perf, mon) -> None:
+def nav_paths(sig, ra, perf, rf, gate) -> pd.DataFrame | None:
+    """일별 NAV. 월중 값은 비용·현금이자 제외 추정치, 완료 월 말일은 performance.csv 공식 수익으로 확정."""
+    p0 = FIRST_DECISION + 1
+    days = ra.index[ra.index.to_period("M") >= p0]
+    if not len(days):
+        return None
+    out = {}
+    for nm_, opt in STRATS.items():
+        vals, base = [], float(CAPITAL)
+        for p in pd.unique(days.to_period("M")):
+            D = days[days.to_period("M") == p]
+            s = sig.get(p - 1)
+            if s is None or s["gate"] != 1:
+                path = (1 + float(rf.get(p, 0.0))) ** (np.arange(1, len(D) + 1) / len(D)) - 1
+            else:
+                tk = [h["ticker"] for h in s["holdings"]]; w = np.array([h["weight"] for h in s["holdings"]])
+                cum = np.cumprod(1 + ra.loc[D, tk].fillna(0.0).values, axis=0)
+                if "stock_stop" in opt:           # Sim 과 동일: 트리거 다음날 종가 체결, 이후 동결
+                    pk = np.maximum.accumulate(np.vstack([np.ones(len(tk)), cum]), axis=0)[1:]
+                    for j in range(len(tk)):
+                        ix = np.where(cum[:, j] / pk[:, j] - 1 <= -opt["stock_stop"])[0]
+                        if len(ix) and ix[0] + 2 < len(D):
+                            cum[ix[0] + 2:, j] = cum[ix[0] + 1, j]
+                path = (cum * w).sum(axis=1) - 1
+            v = list(base * (1 + path))
+            if str(p) in perf.index:
+                base *= 1 + float(perf.loc[str(p), nm_]); v[-1] = base
+            vals += v
+        out[nm_] = pd.Series(vals, index=days)
+    k = core.load_daily()["kospi"].dropna()
+    k0 = k[k.index < days[0]].iloc[-1]
+    out["KOSPI"] = CAPITAL * k.reindex(days) / k0
+    try:   # TR 근사: 일간 가격수익 + 전일 배당수익률/252
+        dy = pd.read_parquet(f"{DATA}/index_fund_1001.parquet")["배당수익률"]; dy.index = pd.to_datetime(dy.index)
+        kr = k.pct_change().reindex(days).fillna(0) + dy.shift(1).reindex(days).ffill().fillna(0) / 100 / 252
+        out["KOSPI TR근사"] = CAPITAL * (1 + kr).cumprod()
+    except Exception:
+        pass
+    per = days.to_period("M"); n = pd.Series(per).groupby(per).transform("size").values
+    out["CD현금"] = CAPITAL * (1 + rf.reindex(per).fillna(0).values / n).cumprod()
+    return pd.DataFrame(out, index=days)
+
+
+def risk_table(nav: pd.DataFrame) -> pd.DataFrame:
+    rows = {}
+    for k, x in nav.items():
+        r = x.pct_change().dropna(); dd = x / x.cummax().clip(lower=CAPITAL) - 1
+        rows[k] = {"평가금액(만원)": round(x.iloc[-1] / 1e4), "누적수익": f"{(x.iloc[-1] / CAPITAL - 1) * 100:+.2f}%",
+                   "현재낙폭": f"{dd.iloc[-1] * 100:.2f}%", "MDD": f"{dd.min() * 100:.2f}%",
+                   "연율변동성": f"{r.std() * np.sqrt(252) * 100:.1f}%" if len(r) >= 20 else "표본<20일"}
+    return pd.DataFrame(rows).T
+
+
+def mermaid(nav: pd.DataFrame) -> str:
+    step = max(1, len(nav) // 40); x = nav.iloc[::step]
+    if x.index[-1] != nav.index[-1]:
+        x = pd.concat([x, nav.iloc[[-1]]])
+    lo, hi = int(x.min().min() / 1e4 * 0.97), int(x.max().max() / 1e4 * 1.03) + 1
+    L = ["```mermaid", "xychart-beta", '  title "NAV (만원)"',
+         "  x-axis [" + ", ".join(f'"{d:%m/%d}"' for d in x.index) + "]", f"  y-axis \"만원\" {lo} --> {hi}"]
+    L += ["  line [" + ", ".join(f"{v / 1e4:.0f}" for v in x[k]) + "]" for k in x.columns]
+    return "\n".join(L + ["```", "선 순서: " + " / ".join(x.columns)])
+
+
+def write_status(last_day, cur, sig, perf, mon, nav=None) -> None:
     L = [f"# Forward 모의운용 현황", f"갱신: 데이터 {last_day.date()} 기준\n",
          "사전등록: ① 52WH×PxMA10 기준형 / ② ① + 종목 트레일링 스톱 10%. 첫 보유월 2026-10.",
          "체결 가정: 백테스트와 동일(결정월 말 종가). 실제 체결은 신호 확인 다음 거래일이라 괴리 존재.\n"]
@@ -119,6 +185,19 @@ def write_status(last_day, cur, sig, perf, mon) -> None:
     if mon:
         L += [f"\n## ② 스톱 모니터 ({cur} 보유분, 트리거 시 다음날 종가 청산)", "| 티커 | 종목 | 월중 수익 | 고점대비 | 트리거일 |", "|---|---|---|---|---|"]
         L += [f"| {m['ticker']} | {m['name']} | {m['ret']*100:+.1f}% | {m['dd']*100:.1f}% | {m['trigger'] or '-'} |" for m in mon]
+    if nav is not None and len(nav):
+        L += [f"\n## 초기자금 {CAPITAL / 1e4:,.0f}만원 기준 성과·위험 ({nav.index[0].date()}~{nav.index[-1].date()}, {len(nav)}거래일)",
+              "월중 값은 비용·현금이자 제외 추정치, 완료 월 말일은 공식 수익으로 확정.\n",
+              risk_table(nav).to_markdown(), "", mermaid(nav)]
+    t = cur - 1
+    if t in sig and sig[t]["gate"] == 1:
+        try:
+            sec = pd.read_parquet(f"{DATA}/sector_monthly.parquet"); snap = sec.date.max(); sec = sec[sec.date == snap].set_index("ticker")["업종명"]
+            cnt = sec.reindex([h["ticker"] for h in sig[t]["holdings"]]).fillna("미분류").value_counts()
+            L += [f"\n## 보유 업종 집중도 ({cur} 보유분, 업종 스냅샷 {snap})",
+                  " · ".join(f"{k} {v}" for k, v in cnt.items())]
+        except Exception:
+            pass
     if len(perf):
         cum = (1 + perf[["①BASE", "②STOP10", "KOSPI"]]).prod() - 1
         L += ["\n## 완료 월 성과", perf.round(4).to_markdown(), "\n누적: " + " · ".join(f"{k} {v*100:+.1f}%" for k, v in cum.items())]

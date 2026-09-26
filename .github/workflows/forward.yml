@@ -27,9 +27,11 @@ jobs:
       - name: Download state
         run: |
           mkdir -p data
-          gh release download data-latest -D data --clobber -p 'panel_close.parquet' -p 'panel_shares.parquet' -p 'panel_volume.parquet' -p 'panel_mcap.parquet' -p 'ecos_721Y001.parquet'
+          gh release download data-latest -D data --clobber -p 'panel_close.parquet' -p 'panel_shares.parquet' -p 'panel_volume.parquet' -p 'panel_mcap.parquet' -p 'ecos_721Y001.parquet' -p 'sector_monthly.parquet'
       - name: Index (KRX)
         run: python collect/fetch_index.py
+      - name: Div yield (KRX, TR 근사용)
+        run: python collect/fetch_divyield.py
       - name: Panel increment (KRX)
         env: { CKPT_MIN: "30", SLEEP: "1.0", COOLDOWN: "300", PROG_MIN: "60" }
         run: python collect/fetch_panel.py
