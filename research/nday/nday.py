@@ -5,6 +5,7 @@
 정의: 리밸런싱일 t 종가에 52WH(수정가/252일 고가) 상위 20 동일가중으로 전량 재조정.
   유니버스·게이트는 t 이전 마지막 월말 값(기준형과 동일 정의, 룩어헤드 없음) → 리밸런싱 빈도 효과만 분리.
   비용: 편도 50bp × |목표비중 − 드리프트비중| 합. 현금 = CD 월평균 일할.
+  게이트가 바뀌는 월말은 추가 리밸런싱일로 강제 (왜: 게이트 반응 지연이 빈도 효과와 섞이지 않게).
   위상: 평가 시작 첫 거래일부터 n일 간격 (위상 민감도는 한계로 명시).
 검증: 동일 엔진에 '월말 리밸런싱'을 넣어 기준형(Sim) 수치 재현 여부 확인.
 판정: 일별 수익을 월로 합성 → 3차와 동일 기준 (WF-OOS 2019-01~2024-06, 초과수익 Sharpe)
@@ -59,8 +60,11 @@ def daily_engine(ra: pd.DataFrame, c: pd.DataFrame, S: dict, gate_m: pd.Series, 
     return pd.Series(out, index=days), pd.Series(turn, index=days)
 
 
-def rebal_days(days: pd.DatetimeIndex, n: int | str, start="2015-12-01") -> pd.DatetimeIndex:
+def rebal_days(days: pd.DatetimeIndex, n: int | str, gate_m: pd.Series, start="2015-12-01") -> pd.DatetimeIndex:
     d = days[days >= start]
+    me = pd.DatetimeIndex(pd.Series(d).groupby(d.to_period("M")).max().values)
     if n == "M":
-        return pd.DatetimeIndex(pd.Series(d).groupby(d.to_period("M")).max().values)
-    return d[::n]
+        return me
+    chg = gate_m.ne(gate_m.shift(1))
+    forced = [x for x in me if bool(chg.get(x.to_period("M"), False))]
+    return d[::n].union(pd.DatetimeIndex(forced))
