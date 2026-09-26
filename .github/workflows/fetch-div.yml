@@ -1,0 +1,27 @@
+name: fetch-div
+on:
+  workflow_dispatch:
+  push:
+    branches: [extra-data]
+    paths: [collect/fetch_divyield.py, .github/workflows/fetch-div.yml]
+jobs:
+  div:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install -r requirements.txt
+      - name: Fetch
+        env:
+          KRX_ID: ${{ secrets.KRX_ID }}
+          KRX_PW: ${{ secrets.KRX_PW }}
+        run: python collect/fetch_divyield.py
+      - name: Upload
+        if: always()
+        run: gh release upload data-latest data/index_fund_* --clobber || true
