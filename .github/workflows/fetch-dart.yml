@@ -4,10 +4,11 @@ on:
   push:
     branches: [dart]
     paths: [collect/fetch_dart.py, .github/workflows/fetch-dart.yml]
+concurrency: { group: dart, cancel-in-progress: false }
 jobs:
   dart:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 110
     permissions:
       contents: write
     env:
@@ -17,13 +18,20 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
       - run: pip install -r requirements.txt
-      - run: |
+      - name: Git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: Resume state
+        run: |
           mkdir -p data
           gh release download data-latest -p panel_close.parquet -D data --clobber
+          gh release download data-latest -p 'dart_*' -D data --clobber || echo "no prior state"
       - name: Fetch
         env:
           DART_KEY: ${{ secrets.DART_KEY }}
+          BUDGET_MIN: "95"
         run: python collect/fetch_dart.py
-      - name: Upload
+      - name: Upload (always)
         if: always()
         run: gh release upload data-latest data/dart_* --clobber || true
