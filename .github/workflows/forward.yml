@@ -19,7 +19,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
-      - run: pip install -r requirements.txt tabulate
+      - run: pip install -r requirements.txt tabulate exchange_calendars
       - name: Git identity
         run: |
           git config user.name "github-actions[bot]"
@@ -27,7 +27,7 @@ jobs:
       - name: Download state
         run: |
           mkdir -p data
-          gh release download data-latest -D data --clobber -p 'panel_close.parquet' -p 'panel_shares.parquet' -p 'panel_volume.parquet' -p 'panel_mcap.parquet' -p 'ecos_721Y001.parquet' -p 'sector_monthly.parquet'
+          gh release download data-latest -D data --clobber -p 'panel_close.parquet' -p 'panel_shares.parquet' -p 'panel_volume.parquet' -p 'panel_mcap.parquet' -p 'ecos_721Y001.parquet' -p 'sector_monthly.parquet' -p 'panel_amount.parquet' -p 'fund_monthly.parquet'
       - name: Index (KRX)
         run: python collect/fetch_index.py
       - name: Div yield (KRX, TR 근사용)
@@ -36,6 +36,7 @@ jobs:
         env: { CKPT_MIN: "30", SLEEP: "1.0", COOLDOWN: "300", PROG_MIN: "60" }
         run: python collect/fetch_panel.py
       - name: Forward
+        id: fwd
         run: python forward/run_forward.py
       - name: Commit & upload
         run: |
@@ -43,3 +44,14 @@ jobs:
           git add forward/
           git commit -m "forward: $(date -u +%F)" || echo "no change"
           git pull --rebase -q && git push -q
+      - name: Telegram ③v2 채점 입력 게시
+        # 왜 커밋 뒤: 채점 입력이 매수 전 리포에 고정된 뒤 공유 (사후 편향 차단)
+        if: steps.fwd.outputs.decision != ''
+        env:
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_KEY }}
+          TG_CHAT: ${{ secrets.CHAT_ID }}
+          D: ${{ steps.fwd.outputs.decision }}
+        run: |
+          r=$(curl -s "https://api.telegram.org/bot${TG_TOKEN}/sendDocument" -F chat_id="$TG_CHAT" \
+                -F document=@"forward/decisions/${D}.csv" -F caption="📋 ${D} ③v2 채점 입력 (52WH 후보 20, 딜·재무 플래그 pending)")
+          echo "$r" | python3 -c "import json,sys;d=json.load(sys.stdin);print('send:',d.get('ok'),d.get('description'));sys.exit(0 if d.get('ok') else 1)"

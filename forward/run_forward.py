@@ -11,17 +11,19 @@ import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path[:0] = [str(ROOT / "research/gated_stocks"), str(ROOT / "research/variants"), str(ROOT / "research/monthly_timing")]
+sys.path[:0] = [str(Path(__file__).resolve().parent), str(ROOT / "research/gated_stocks"), str(ROOT / "research/variants"), str(ROOT / "research/monthly_timing")]
 import core, stocks
 DATA = os.environ.get("DATA_DIR", str(ROOT / "data"))
 core.DATA = stocks.DATA = DATA
 import variants
+import decision
 from variants import Sim, turnover_cost
 
 FIRST_DECISION = pd.Period(os.environ.get("FWD_FIRST_DECISION", "2026-09"), "M")
 STRATS = {"①BASE": {}, "②STOP10": {"stock_stop": 0.10}}
 STOP = 0.10
 CAPITAL = 10_000_000          # 사용자 지정 초기자금(원)
+SCORE_TH, MAX_PICK = 70, 5    # ③v2 사전등록(2026-09-26 사용자 승인): 70점 이상 점수순 최대 5, 0개면 현금
 OUT = ROOT / "forward"; (OUT / "signals").mkdir(parents=True, exist_ok=True)
 
 
@@ -43,7 +45,8 @@ def cd_rate(idx: pd.PeriodIndex) -> pd.Series:
 def names_for(tks) -> dict:
     try:
         from pykrx import stock
-        return {t: stock.get_market_ticker_name(t) for t in tks}
+        nm = {t: stock.get_market_ticker_name(t) for t in tks}
+        return {t: v for t, v in nm.items() if isinstance(v, str)}   # 왜: 인증 실패 시 str 대신 빈 DataFrame 반환 → JSON 직렬화 실패
     except Exception:
         return {}
 
@@ -78,6 +81,14 @@ def main() -> None:
                                   mcap_rank=int(sim.S["rank"].loc[t, k])) for k in w.index])
         if final: f.write_text(json.dumps(sig, ensure_ascii=False, indent=1))
         status_sig[t] = sig
+
+    # ③v2: 월말 거래일 저녁이면 당월 신호를 즉시 확정하고 채점 입력 CSV 생성 (A안: 익일 종가 매수 전 확정)
+    force = os.environ.get("FORCE_DECISION") == "1"
+    if cur in status_sig and (decision.is_month_end(last_day) or force):
+        s_ = status_sig[cur]; s_["final"] = True
+        (OUT / "signals" / f"{cur}.json").write_text(json.dumps(s_, ensure_ascii=False, indent=1))
+        if force or not (OUT / "decisions" / f"{cur}.csv").exists():
+            decision.build(cur, s_, ra, last_day, DATA, OUT)
 
     # (4) 완료 보유월 성과: 백테스트와 동일 함수
     rows = {}
@@ -172,6 +183,21 @@ def mermaid(nav: pd.DataFrame) -> str:
     return "\n".join(L + ["```", "선 순서: " + " / ".join(x.columns)])
 
 
+def scores_section(p: Path) -> list[str]:
+    """③v2 채점 결과: 점수 막대 + 기준선. 선정 = 기준 이상 점수순 최대 MAX_PICK."""
+    sc = pd.read_csv(p, dtype={"ticker": str}).sort_values("score", ascending=False)
+    pick = sc[sc.score >= SCORE_TH].head(MAX_PICK)
+    L = [f"\n## ③v2 채점 ({p.stem.replace('_scores', '')} 결정, 기준 {SCORE_TH}점 · 최대 {MAX_PICK}개)",
+         f"선정 {len(pick)}개" + (" → 전액 현금" if pick.empty else ": " + ", ".join(pick.name)), "",
+         "```mermaid", "xychart-beta", '  title "종목별 점수 (선: 기준)"',
+         "  x-axis [" + ", ".join(f'"{n[:6]}"' for n in sc.name) + "]", '  y-axis "점수" 0 --> 100',
+         "  bar [" + ", ".join(f"{v:.0f}" for v in sc.score) + "]",
+         "  line [" + ", ".join(str(SCORE_TH) for _ in sc.score) + "]", "```", "",
+         "| 종목 | 점수 | 근거 |", "|---|---|---|"]
+    L += [f"| {'**' + r.name + '**' if r.ticker in set(pick.ticker) else r.name} | {r.score:.0f} | {r.reason} |" for r in sc.itertuples()]
+    return L
+
+
 def write_status(last_day, cur, sig, perf, mon, nav=None) -> None:
     L = [f"# Forward 모의운용 현황", f"갱신: 데이터 {last_day.date()} 기준\n",
          "사전등록: ① 52WH×PxMA10 기준형 / ② ① + 종목 트레일링 스톱 10%. 첫 보유월 2026-10.",
@@ -189,6 +215,8 @@ def write_status(last_day, cur, sig, perf, mon, nav=None) -> None:
         L += [f"\n## 초기자금 {CAPITAL / 1e4:,.0f}만원 기준 성과·위험 ({nav.index[0].date()}~{nav.index[-1].date()}, {len(nav)}거래일)",
               "월중 값은 비용·현금이자 제외 추정치, 완료 월 말일은 공식 수익으로 확정.\n",
               risk_table(nav).to_markdown(), "", mermaid(nav)]
+    for p in sorted((OUT / "decisions").glob("*_scores.csv"))[-1:] if (OUT / "decisions").exists() else []:
+        L += scores_section(p)
     t = cur - 1
     if t in sig and sig[t]["gate"] == 1:
         try:
