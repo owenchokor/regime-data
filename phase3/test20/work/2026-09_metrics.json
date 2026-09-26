@@ -1,0 +1,42 @@
+{
+ "G": {
+  "minutes": 8.2,
+  "turns": 34,
+  "subtype": "success",
+  "usd_api_equiv": 1.2051346,
+  "input_tokens": 26,
+  "output_tokens": 24021,
+  "cache_read": 661663,
+  "cache_write": 64176
+ },
+ "V": {
+  "minutes": 5.4,
+  "turns": 33,
+  "subtype": "success",
+  "usd_api_equiv": 1.2283962000000002,
+  "input_tokens": 24,
+  "output_tokens": 24935,
+  "cache_read": 563256,
+  "cache_write": 63471
+ },
+ "M": {
+  "minutes": 5.8,
+  "turns": 30,
+  "subtype": "success",
+  "usd_api_equiv": 1.1418816,
+  "input_tokens": 24,
+  "output_tokens": 26559,
+  "cache_read": 548728,
+  "cache_write": 69454
+ },
+ "S": {
+  "minutes": 3.8,
+  "turns": 12,
+  "subtype": "success",
+  "usd_api_equiv": 0.45194000000000006,
+  "input_tokens": 16,
+  "output_tokens": 19208,
+  "cache_read": 379020,
+  "cache_write": 45750
+ }
+}
