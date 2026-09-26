@@ -74,6 +74,8 @@ def build(t: pd.Period, sig: dict, ra: pd.DataFrame, day: pd.Timestamp, data: st
         "mcap_rank": [h["mcap_rank"] for h in sig["holdings"]],
         "r1m": r1m.values, "vol20": vol20.values, "amt_ratio": amt_ratio.values,
         "eps": eps.values, "eps_g3": eps_g3.values,
+        # 왜: KRX EPS는 연 1회(5월 사업보고서 반영) 갱신 → 그 외 달 eps_g3=0은 '성장 없음'이 아니라 '정보 없음'
+        "eps_updated_3m": ((eps != eps_old) & eps.notna() & eps_old.notna()).astype(int).values,
         "per": F["PER"].reindex(tk).values if "PER" in F else np.nan,
         "pbr": F["PBR"].reindex(tk).values if "PBR" in F else np.nan,
         "div": F["DIV"].reindex(tk).values if "DIV" in F else np.nan,

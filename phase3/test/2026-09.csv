@@ -1,0 +1,4 @@
+decision_month,as_of,ticker,name,sector,rule_rank,high52,at_52wh,mcap_rank,r1m,vol20,amt_ratio,eps,eps_g3,eps_updated_3m,per,pbr,div,loss,impair,deal_flag,fin_flag,gate,fund_src
+2026-09,2026-09-23,003490,대한항공,운송·창고,1,1.0,1,60,0.19772,0.40269,1.2414,2133.0,0.0,0,14.77,1.06,2.38,0.0,0.0,pending,pending,1,fund_monthly 20260923
+2026-09,2026-09-23,119850,지엔씨에너지,전기·전자,2,1.0,1,307,0.10216,0.82002,1.56258,2565.0,0.0,0,21.87,4.14,0.27,0.0,0.0,pending,pending,1,fund_monthly 20260923
+2026-09,2026-09-23,092870,엑시콘,기계·장비,3,1.0,1,423,0.74593,1.12346,1.3444,715.0,0.0,0,60.07,2.84,0.23,0.0,0.0,pending,pending,1,fund_monthly 20260923

@@ -8,6 +8,8 @@ concurrency: { group: forward, cancel-in-progress: false }
 jobs:
   fwd:
     runs-on: ubuntu-latest
+    outputs:
+      decision: ${{ steps.fwd.outputs.decision }}
     timeout-minutes: 120
     permissions:
       contents: write
@@ -55,3 +57,15 @@ jobs:
           r=$(curl -s "https://api.telegram.org/bot${TG_TOKEN}/sendDocument" -F chat_id="$TG_CHAT" \
                 -F document=@"forward/decisions/${D}.csv" -F caption="📋 ${D} ③v2 채점 입력 (52WH 후보 20, 딜·재무 플래그 pending)")
           echo "$r" | python3 -c "import json,sys;d=json.load(sys.stdin);print('send:',d.get('ok'),d.get('description'));sys.exit(0 if d.get('ok') else 1)"
+  debate:
+    # 왜 별도 워크플로: 수동 테스트(workflow_dispatch)와 월말 자동 호출을 같은 코드로
+    needs: fwd
+    if: needs.fwd.outputs.decision != ''
+    permissions:
+      contents: write
+      id-token: write
+    uses: ./.github/workflows/p3-debate.yml
+    with:
+      month: ${{ needs.fwd.outputs.decision }}
+      in_dir: forward/decisions
+    secrets: inherit

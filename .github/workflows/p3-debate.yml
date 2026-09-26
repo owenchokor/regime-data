@@ -1,0 +1,86 @@
+name: p3-debate
+# ③v2 3축 토론. forward.yml이 월말에 호출(workflow_call), 테스트는 수동(workflow_dispatch).
+# 왜 축별 별도 세션: 한 세션에서 3역할을 하면 앞 역할 의견이 뒤 역할에 새어 독립성이 깨짐
+on:
+  workflow_call:
+    inputs:
+      month: { type: string, required: true }
+      in_dir: { type: string, default: forward/decisions }
+  workflow_dispatch:
+    inputs:
+      month: { type: string, required: true }
+      in_dir: { type: string, default: phase3/test }
+concurrency: { group: p3-debate, cancel-in-progress: false }
+jobs:
+  debate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    permissions:
+      contents: write
+      id-token: write
+    env:
+      D: ${{ inputs.month }}
+      IN: ${{ inputs.in_dir }}
+      TG_TOKEN: ${{ secrets.TELEGRAM_BOT_KEY }}
+      TG_CHAT: ${{ secrets.CHAT_ID }}
+      TOOLS: "--allowedTools Read,Write,Glob,Grep,WebSearch,WebFetch --max-turns 120"   # 임의값, 튜닝 필요
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main }   # 왜: 호출 시점 SHA에는 방금 커밋된 decisions CSV가 없음
+      - name: 입력 확인·시작 알림
+        run: |
+          test -s "$IN/$D.csv" || { echo "입력 없음 $IN/$D.csv"; exit 1; }
+          mkdir -p "$IN/work"
+          curl -s -o /dev/null "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" --data-urlencode chat_id="$TG_CHAT" \
+            --data-urlencode text="🗣 ${D} ③v2 에이전트 토론 진행중... ($(($(wc -l < "$IN/$D.csv") - 1))종목)"
+      - name: G 성장·기대치
+        uses: anthropics/claude-code-action@v1
+        timeout-minutes: 50
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: "phase3/debate_prompt.md 를 읽고 1단계를 AXIS=G 로 수행하라. D=${{ inputs.month }}, IN=${{ inputs.in_dir }}, OUT=${{ inputs.in_dir }}"
+          claude_args: ${{ env.TOOLS }}
+      - name: V 가치·재무·딜
+        uses: anthropics/claude-code-action@v1
+        timeout-minutes: 50
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: "phase3/debate_prompt.md 를 읽고 1단계를 AXIS=V 로 수행하라. D=${{ inputs.month }}, IN=${{ inputs.in_dir }}, OUT=${{ inputs.in_dir }}"
+          claude_args: ${{ env.TOOLS }}
+      - name: M 시장·모멘텀·거시
+        uses: anthropics/claude-code-action@v1
+        timeout-minutes: 50
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: "phase3/debate_prompt.md 를 읽고 1단계를 AXIS=M 으로 수행하라. D=${{ inputs.month }}, IN=${{ inputs.in_dir }}, OUT=${{ inputs.in_dir }}"
+          claude_args: ${{ env.TOOLS }}
+      - name: 반박·종합
+        uses: anthropics/claude-code-action@v1
+        timeout-minutes: 50
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: "phase3/debate_prompt.md 를 읽고 2단계(SYNTH)를 수행하라. D=${{ inputs.month }}, IN=${{ inputs.in_dir }}, OUT=${{ inputs.in_dir }}"
+          claude_args: "--allowedTools Read,Write,Glob,Grep --max-turns 60"
+      - name: 결과 검증·선정
+        id: pick
+        run: python3 phase3/finalize.py "$IN" "$D"
+      - name: 커밋
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$IN"
+          git commit -qm "p3-debate: ${D} ③v2 채점" || echo "no change"
+          git pull --rebase -q && git push -q
+      - name: 텔레그램 결과
+        run: |
+          r=$(curl -s "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" --data-urlencode chat_id="$TG_CHAT" --data-urlencode text@"$IN/${D}_telegram.txt")
+          echo "$r" | python3 -c "import json,sys;d=json.load(sys.stdin);print('send:',d.get('ok'),d.get('description'));sys.exit(0 if d.get('ok') else 1)"
+      - name: 폴백
+        if: failure()
+        run: |
+          curl -s -o /dev/null "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" --data-urlencode chat_id="$TG_CHAT" \
+            --data-urlencode text="⚠️ ${D} 토론 실패 — 수기 채점 필요 (Actions: p3-debate 로그 확인)"
