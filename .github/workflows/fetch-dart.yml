@@ -1,0 +1,29 @@
+name: fetch-dart
+on:
+  workflow_dispatch:
+  push:
+    branches: [dart]
+    paths: [collect/fetch_dart.py, .github/workflows/fetch-dart.yml]
+jobs:
+  dart:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install -r requirements.txt
+      - run: |
+          mkdir -p data
+          gh release download data-latest -p panel_close.parquet -D data --clobber
+      - name: Fetch
+        env:
+          DART_KEY: ${{ secrets.DART_KEY }}
+        run: python collect/fetch_dart.py
+      - name: Upload
+        if: always()
+        run: gh release upload data-latest data/dart_* --clobber || true
