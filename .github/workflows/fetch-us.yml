@@ -1,0 +1,22 @@
+name: fetch-us
+on:
+  workflow_dispatch:
+  push:
+    branches: [extra-data]
+    paths: [collect/fetch_us.py, .github/workflows/fetch-us.yml]
+jobs:
+  us:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install -r requirements.txt
+      - run: python collect/fetch_us.py
+      - name: Upload
+        run: gh release upload data-latest data/fred_NASDAQCOM.parquet data/fred_DFF.parquet --clobber
